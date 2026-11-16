@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { checkApiHealth, syncWalletHistory, trackWallet } from "./api";
+import {
+  checkApiHealth,
+  listWalletHistory,
+  syncWalletHistory,
+  trackWallet,
+} from "./api";
 
 const investigation = {
   id: "550e8400-e29b-41d4-a716-446655440000",
@@ -101,7 +106,7 @@ describe("investigation API client", () => {
 
   it("starts a bounded on-demand Bitcoin history sync", async () => {
     const result = {
-      provider: "Blockstream Esplora",
+      provider: "Esplora (blockstream.info)",
       fetched: 25,
       saved: 25,
       pages: 1,
@@ -117,6 +122,19 @@ describe("investigation API client", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       `http://127.0.0.1:8080/api/v1/investigations/${investigation.id}/addresses/${trackedAddress.id}/sync`,
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("reads only the selected tracked address history", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      listWalletHistory({ ...trackedAddress, network: "bitcoin" }),
+    ).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://127.0.0.1:8080/api/v1/investigations/${investigation.id}/addresses/${trackedAddress.id}/transfers`,
+      expect.objectContaining({ headers: {} }),
     );
   });
 });
