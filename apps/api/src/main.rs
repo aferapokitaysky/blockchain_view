@@ -27,9 +27,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
     info!(address = %config.bind_address, "API запущен");
     warn!("API пока не защищён аутентификацией и предназначен только для локальной разработки");
 
-    axum::serve(listener, app(HealthState { database, redis }))
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    let http_client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .user_agent("Tracefold/0.1 (+https://github.com/aferapokitaysky/blockchain_view)")
+        .build()?;
+    let bitcoin_esplora_url = std::env::var("BITCOIN_ESPLORA_URL")
+        .unwrap_or_else(|_| "https://blockstream.info/api".into());
+
+    axum::serve(
+        listener,
+        app(HealthState {
+            database,
+            redis,
+            http_client,
+            bitcoin_esplora_url,
+        }),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
     Ok(())
 }
 
