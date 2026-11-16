@@ -1,6 +1,12 @@
 import type { ObservedTransfer, WalletHistory } from "./api";
 import { formatObservedAmount } from "./formatAssetAmount";
 import { isEvmNetworkId } from "../networks/networkCatalog";
+import type { AddressScreeningResult, StoredRiskSignal } from "./api";
+import {
+  collectTransferRiskEvidence,
+  scoreTransfer,
+} from "../risk/scoreTransfer";
+import type { TransferRiskAssessment } from "../risk/scoreTransfer";
 
 export type TransactionFeedItem = {
   id: string;
@@ -16,6 +22,14 @@ export type TransactionFeedItem = {
   confirmed: boolean;
   provider: string;
   trackedWallet: string;
+  trackedAddressId: string;
+  riskAssessment: TransferRiskAssessment | null;
+};
+
+export type TransactionRiskContext = {
+  trackedAddressId: string;
+  signals: StoredRiskSignal[];
+  screening: AddressScreeningResult | null;
 };
 
 const NETWORK_NAMES: Record<string, TransactionFeedItem["network"]> = {
@@ -87,6 +101,7 @@ function getNetworkName(
 export function buildTransactionFeed(
   histories: WalletHistory[],
   namesById: Record<string, string> = {},
+  riskContext: TransactionRiskContext | null = null,
 ): TransactionFeedItem[] {
   return histories
     .flatMap(({ address, transfers }) => {
@@ -97,6 +112,14 @@ export function buildTransactionFeed(
         if (!network) return [];
 
         const flow = getFlow(transfer, trackedWallet);
+        const riskEvidence =
+          address.id === riskContext?.trackedAddressId
+            ? collectTransferRiskEvidence(
+                transfer,
+                riskContext.signals,
+                riskContext.screening,
+              )
+            : [];
         return [
           {
             id: `${transfer.id}:${transfer.event_index ?? "transaction"}`,
@@ -112,6 +135,9 @@ export function buildTransactionFeed(
             confirmed: transfer.confirmed,
             provider: transfer.provider,
             trackedWallet,
+            trackedAddressId: address.id,
+            riskAssessment:
+              riskEvidence.length > 0 ? scoreTransfer(riskEvidence) : null,
           },
         ];
       });

@@ -1486,6 +1486,34 @@ tbody tr:hover {
   color: #748179;
   font-size: 8px;
 }
+.transfer-risk,
+.transfer-risk-none {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 7px;
+  border: 1px solid #34453d;
+  border-radius: 999px;
+  color: #c6d4cb;
+  font-size: 9px;
+  text-transform: capitalize;
+}
+.transfer-risk.high {
+  border-color: #8c5147;
+  color: #f0a394;
+}
+.transfer-risk.elevated {
+  border-color: #806b3f;
+  color: #e8ca83;
+}
+.transfer-risk.guarded {
+  border-color: #566d59;
+  color: #b3d8ae;
+}
+.transfer-risk-none {
+  border-style: dashed;
+  color: #829087;
+}
 .feed-pagination {
   display: flex;
   align-items: center;
