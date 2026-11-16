@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { ObservedTransfer, TrackedAddress, WalletHistory } from "./api";
-import { buildTransactionFeed, formatFeedTime } from "./transactionFeed";
+import type {
+  AddressScreeningResult,
+  ObservedTransfer,
+  StoredRiskSignal,
+  TrackedAddress,
+  WalletHistory,
+} from "./api";
+import {
+  buildTransactionFeed,
+  formatFeedTime,
+  type TransactionRiskContext,
+} from "./transactionFeed";
 
 const address: TrackedAddress = {
   id: "tracked-1",
@@ -40,7 +50,162 @@ function history(
   return { address: trackedAddress, transfers };
 }
 
+function riskSignal(
+  details: Record<string, unknown>,
+  overrides: Partial<StoredRiskSignal> = {},
+): StoredRiskSignal {
+  return {
+    id: "risk-1",
+    tracked_address_id: address.id,
+    signal_key: "direct_service_exposure",
+    category: "exposure",
+    severity: "high",
+    source_name: "Analyst source",
+    source_reference: "https://example.test/evidence",
+    observed_at: "2026-11-16T11:00:00Z",
+    details,
+    created_at: "2026-11-16T11:01:00Z",
+    ...overrides,
+  };
+}
+
+function riskContext(
+  signals: StoredRiskSignal[],
+  screening: AddressScreeningResult | null = null,
+): TransactionRiskContext {
+  return { trackedAddressId: address.id, signals, screening };
+}
+
 describe("transaction feed", () => {
+  it("scores only analyst evidence explicitly linked to the transaction hash", () => {
+    const [item] = buildTransactionFeed(
+      [history([transfer()])],
+      {},
+      riskContext([
+        riskSignal({ transaction_hash: "0xABCDEF0123456789ABCDEF0123456789" }),
+        riskSignal({ transaction_hash: "0xother" }, { id: "risk-2" }),
+      ]),
+    );
+
+    expect(item.riskAssessment).toMatchObject({
+      score: 48,
+      level: "elevated",
+    });
+    expect(item.riskAssessment?.contributions).toHaveLength(1);
+  });
+
+  it("keeps case-sensitive Solana signatures when matching analyst evidence", () => {
+    const solanaAddress = { ...address, network: "solana" };
+    const solanaTransfer = transfer({
+      network: "solana",
+      transaction_hash: "5KxQmTestSignature",
+      from_address: "8QTestSender",
+      to_address: "7BTestRecipient",
+    });
+    const [item] = buildTransactionFeed(
+      [history([solanaTransfer], solanaAddress)],
+      { solana: "Solana" },
+      {
+        trackedAddressId: solanaAddress.id,
+        signals: [
+          riskSignal(
+            { transaction_hash: "5kXQmTestSignature" },
+            {
+              tracked_address_id: solanaAddress.id,
+            },
+          ),
+        ],
+        screening: null,
+      },
+    );
+
+    expect(item.riskAssessment).toBeNull();
+  });
+
+  it("adds direct OFAC evidence only when a matched address participates in the transfer", () => {
+    const screening: AddressScreeningResult = {
+      network: "ethereum",
+      status: "exact_match",
+      match_type: "exact_address",
+      source: {
+        source_name: "OFAC SDN",
+        published_at: "2026-11-10T00:00:00Z",
+        imported_at: "2026-11-11T00:00:00Z",
+        address_count: 1,
+      },
+      matches: [
+        {
+          entity_uid: "entity-1",
+          entity_name: "Listed entity",
+          programs: ["TEST"],
+          currency_code: "ETH",
+          address: "0xabcdef0123456789abcdef0123456789abcdef01",
+        },
+      ],
+      explanation: "Exact address match.",
+    };
+    const [item] = buildTransactionFeed(
+      [history([transfer()])],
+      {},
+      riskContext([], screening),
+    );
+
+    expect(item.riskAssessment).toMatchObject({
+      score: 80,
+      level: "high",
+    });
+    expect(item.riskAssessment?.contributions[0].evidence.source).toContain(
+      "OFAC SDN",
+    );
+  });
+
+  it("preserves case-sensitive matching for Bitcoin Base58 addresses", () => {
+    const screening: AddressScreeningResult = {
+      network: "bitcoin",
+      status: "exact_match",
+      match_type: "exact_address",
+      source: {
+        source_name: "OFAC SDN",
+        published_at: "2026-11-10T00:00:00Z",
+        imported_at: "2026-11-11T00:00:00Z",
+        address_count: 1,
+      },
+      matches: [
+        {
+          entity_uid: "entity-1",
+          entity_name: "Listed entity",
+          programs: ["TEST"],
+          currency_code: "BTC",
+          address: "1abcDEF0123456789",
+        },
+      ],
+      explanation: "Exact address match.",
+    };
+    const bitcoinTransfer = transfer({
+      network: "bitcoin",
+      transfer_kind: "bitcoin",
+      from_address: "1AbcDEF0123456789",
+      to_address: "1RecipientAddress",
+    });
+    const [item] = buildTransactionFeed(
+      [history([bitcoinTransfer])],
+      {},
+      riskContext([], screening),
+    );
+
+    expect(item.riskAssessment).toBeNull();
+  });
+
+  it("does not present unlinked observations as a low transaction score", () => {
+    const [item] = buildTransactionFeed(
+      [history([transfer()])],
+      {},
+      riskContext([riskSignal({ summary: "Wallet-level observation" })]),
+    );
+
+    expect(item.riskAssessment).toBeNull();
+  });
+
   it("preserves observed EVM endpoints, tracked wallet, and provider provenance", () => {
     const [item] = buildTransactionFeed([history([transfer()])]);
 
