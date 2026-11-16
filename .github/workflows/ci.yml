@@ -72,3 +72,4 @@ jobs:
       - run: cargo fmt --manifest-path apps/api/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path apps/api/Cargo.toml --all-targets --all-features -- -D warnings
       - run: cargo test --manifest-path apps/api/Cargo.toml --all-features
+      - run: cargo build --release --locked -p tracefold-api --bins
