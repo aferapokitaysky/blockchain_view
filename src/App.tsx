@@ -70,6 +70,7 @@ import { formatObservedAmount } from "./features/investigations/formatAssetAmoun
 import {
   buildTransactionFeed,
   formatFeedTime,
+  getTransferRiskPlaceholder,
 } from "./features/investigations/transactionFeed";
 import "./App.css";
 
@@ -1904,96 +1905,98 @@ function App() {
                     </tr>
                   )}
                   {activityStatus === "ready" &&
-                    pagedTransfers.map((transfer) => (
-                      <tr key={transfer.id}>
-                        <td>
-                          <span className="tx-id">
-                            {transfer.hash.length > 24
-                              ? `${transfer.hash.slice(0, 12)}…${transfer.hash.slice(-8)}`
-                              : transfer.hash}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="flow-direction">
-                            {transfer.direction === "outbound" ? (
-                              <ArrowUpRight size={14} />
-                            ) : transfer.direction === "both" ? (
-                              <GitBranch size={14} />
+                    pagedTransfers.map((transfer) => {
+                      const riskPlaceholder = getTransferRiskPlaceholder(
+                        transfer.trackedAddressId,
+                        selectedTrackedAddress?.id ?? null,
+                        riskSignalsLoading,
+                        riskSignalsError,
+                      );
+                      return (
+                        <tr key={transfer.id}>
+                          <td>
+                            <span className="tx-id">
+                              {transfer.hash.length > 24
+                                ? `${transfer.hash.slice(0, 12)}…${transfer.hash.slice(-8)}`
+                                : transfer.hash}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="flow-direction">
+                              {transfer.direction === "outbound" ? (
+                                <ArrowUpRight size={14} />
+                              ) : transfer.direction === "both" ? (
+                                <GitBranch size={14} />
+                              ) : (
+                                <ArrowDownLeft size={14} />
+                              )}
+                              <span>
+                                {transfer.from}
+                                <small>to {transfer.to}</small>
+                              </span>
+                            </span>
+                          </td>
+                          <td>
+                            <b className="amount">
+                              {transfer.amount} <small>{transfer.asset}</small>
+                            </b>
+                          </td>
+                          <td>
+                            <span className="table-network">
+                              <NetworkMark network={transfer.network} />
+                              {transfer.network}
+                            </span>
+                          </td>
+                          <td className="time-cell">
+                            {formatFeedTime(transfer.occurredAt)}
+                          </td>
+                          <td>
+                            <span
+                              className={`status ${transfer.confirmed ? "confirmed" : "pending"}`}
+                            >
+                              <i />
+                              {transfer.confirmed ? "Confirmed" : "Unconfirmed"}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="activity-source">
+                              <strong>{transfer.trackedWallet}</strong>
+                              <small>{transfer.provider}</small>
+                            </span>
+                          </td>
+                          <td>
+                            {transfer.riskAssessment ? (
+                              <span
+                                className={`transfer-risk ${transfer.riskAssessment.level}`}
+                                title={[
+                                  transfer.riskAssessment.disclaimer,
+                                  ...transfer.riskAssessment.contributions.map(
+                                    ({
+                                      evidence,
+                                      basePoints,
+                                      factor,
+                                      points,
+                                    }) =>
+                                      `${evidence.title}: ${basePoints} × ${factor} = ${points} points · ${evidence.source}${evidence.reference ? ` · ${evidence.reference}` : ""}`,
+                                  ),
+                                ].join("\n")}
+                                aria-label={`Review priority ${transfer.riskAssessment.score}, ${transfer.riskAssessment.level}`}
+                              >
+                                {transfer.riskAssessment.score} ·{" "}
+                                {transfer.riskAssessment.level}
+                              </span>
                             ) : (
-                              <ArrowDownLeft size={14} />
+                              <span
+                                className="transfer-risk-none"
+                                title={riskPlaceholder.error ?? undefined}
+                              >
+                                {riskPlaceholder.label}
+                              </span>
                             )}
-                            <span>
-                              {transfer.from}
-                              <small>to {transfer.to}</small>
-                            </span>
-                          </span>
-                        </td>
-                        <td>
-                          <b className="amount">
-                            {transfer.amount} <small>{transfer.asset}</small>
-                          </b>
-                        </td>
-                        <td>
-                          <span className="table-network">
-                            <NetworkMark network={transfer.network} />
-                            {transfer.network}
-                          </span>
-                        </td>
-                        <td className="time-cell">
-                          {formatFeedTime(transfer.occurredAt)}
-                        </td>
-                        <td>
-                          <span
-                            className={`status ${transfer.confirmed ? "confirmed" : "pending"}`}
-                          >
-                            <i />
-                            {transfer.confirmed ? "Confirmed" : "Unconfirmed"}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="activity-source">
-                            <strong>{transfer.trackedWallet}</strong>
-                            <small>{transfer.provider}</small>
-                          </span>
-                        </td>
-                        <td>
-                          {transfer.riskAssessment ? (
-                            <span
-                              className={`transfer-risk ${transfer.riskAssessment.level}`}
-                              title={[
-                                transfer.riskAssessment.disclaimer,
-                                ...transfer.riskAssessment.contributions.map(
-                                  ({ evidence, basePoints, factor, points }) =>
-                                    `${evidence.title}: ${basePoints} × ${factor} = ${points} points · ${evidence.source}${evidence.reference ? ` · ${evidence.reference}` : ""}`,
-                                ),
-                              ].join("\n")}
-                              aria-label={`Review priority ${transfer.riskAssessment.score}, ${transfer.riskAssessment.level}`}
-                            >
-                              {transfer.riskAssessment.score} ·{" "}
-                              {transfer.riskAssessment.level}
-                            </span>
-                          ) : selectedTrackedAddress?.id ===
-                              transfer.trackedAddressId &&
-                            riskSignalsLoading ? (
-                            <span className="transfer-risk-none">
-                              Loading evidence
-                            </span>
-                          ) : selectedTrackedAddress?.id ===
-                              transfer.trackedAddressId && riskSignalsError ? (
-                            <span
-                              className="transfer-risk-none"
-                              title={riskSignalsError}
-                            >
-                              Evidence unavailable
-                            </span>
-                          ) : (
-                            <span className="transfer-risk-none">
-                              No linked evidence
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
               {activityStatus === "ready" && visibleTransfers.length === 0 && (

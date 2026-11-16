@@ -9,6 +9,7 @@ import type {
 import {
   buildTransactionFeed,
   formatFeedTime,
+  getTransferRiskPlaceholder,
   type TransactionRiskContext,
 } from "./transactionFeed";
 
@@ -77,6 +78,21 @@ function riskContext(
 }
 
 describe("transaction feed", () => {
+  it("distinguishes missing transaction evidence from unavailable or unselected data", () => {
+    expect(
+      getTransferRiskPlaceholder(address.id, address.id, true, ""),
+    ).toEqual({ label: "Loading evidence", error: null });
+    expect(
+      getTransferRiskPlaceholder(address.id, address.id, false, "API offline"),
+    ).toEqual({ label: "Evidence unavailable", error: "API offline" });
+    expect(
+      getTransferRiskPlaceholder(address.id, "another-address", false, ""),
+    ).toEqual({ label: "Select wallet for score", error: null });
+    expect(
+      getTransferRiskPlaceholder(address.id, address.id, false, ""),
+    ).toEqual({ label: "No linked evidence", error: null });
+  });
+
   it("scores only analyst evidence explicitly linked to the transaction hash", () => {
     const [item] = buildTransactionFeed(
       [history([transfer()])],
