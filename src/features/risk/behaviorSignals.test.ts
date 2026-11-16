@@ -106,4 +106,429 @@ describe("derived transaction behavior signals", () => {
       "Observed fan-in pattern",
     );
   });
+
+  it("reports repeated same-network, same-asset inbound/outbound pairs with exact evidence", () => {
+    const signals = deriveBehaviorSignals([
+      transfer({
+        id: "inbound-a",
+        direction: "inbound",
+        received_amount: "1000000000000000000000000000000",
+        spent_amount: "0",
+        asset: "USDC",
+        transfer_kind: "erc20",
+        token_decimals: 6,
+        token_contract_address: "0x1111111111111111111111111111111111111111",
+        block_time: "2026-11-16T10:00:00Z",
+        from_address: "0xsource-a",
+      }),
+      transfer({
+        id: "outbound-a",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "1300000000000000000000000000000",
+        asset: "USDC",
+        transfer_kind: "erc20",
+        token_decimals: 6,
+        token_contract_address: "0x1111111111111111111111111111111111111111",
+        block_time: "2026-11-16T10:10:00Z",
+        to_address: "0xdestination-a",
+      }),
+      transfer({
+        id: "inbound-b",
+        direction: "inbound",
+        received_amount: "1000000000000000000000000000000",
+        spent_amount: "0",
+        asset: "USDC",
+        transfer_kind: "erc20",
+        token_decimals: 6,
+        token_contract_address: "0x1111111111111111111111111111111111111111",
+        block_time: "2026-11-16T11:00:00Z",
+        from_address: "0xsource-b",
+      }),
+      transfer({
+        id: "outbound-b",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "700000000000000000000000000000",
+        asset: "USDC",
+        transfer_kind: "erc20",
+        token_decimals: 6,
+        token_contract_address: "0x1111111111111111111111111111111111111111",
+        block_time: "2026-11-16T11:05:00Z",
+        to_address: "0xdestination-b",
+      }),
+    ]);
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toMatchObject({
+      title: "Repeated rapid inbound/outbound sequence",
+      category: "behavior",
+      severity: "low",
+      source: "Saved chain observations · Blockscout",
+      observedAt: "2026-11-16T11:05:00.000Z",
+    });
+    expect(signals[0].detail).toContain("2 non-overlapping");
+    expect(signals[0].detail).toContain("70–130%");
+    expect(signals[0].detail).toContain("from Blockscout");
+    expect(signals[0].detail).toContain("0xoutbound-a");
+    expect(signals[0].detail).toContain("0xinbound-b");
+    expect(signals[0].detail).toContain("raw 1000000000000000000000000000000");
+    expect(signals[0].detail).toContain(
+      "do not prove the same funds continued or establish intent",
+    );
+  });
+
+  it("does not combine different networks or assets to reach the repeat threshold", () => {
+    const signals = deriveBehaviorSignals([
+      transfer({
+        id: "eth-in",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T10:00:00Z",
+      }),
+      transfer({
+        id: "eth-out",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T10:01:00Z",
+      }),
+      transfer({
+        id: "usdc-in",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        asset: "USDC",
+        block_time: "2026-11-16T10:02:00Z",
+      }),
+      transfer({
+        id: "usdc-out",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        asset: "USDC",
+        block_time: "2026-11-16T10:03:00Z",
+      }),
+      transfer({
+        id: "base-in",
+        network: "base",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T10:04:00Z",
+      }),
+      transfer({
+        id: "base-out",
+        network: "base",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T10:05:00Z",
+      }),
+    ]);
+
+    expect(signals.some(({ title }) => title.includes("rapid"))).toBe(false);
+  });
+
+  it("requires inbound before outbound within the inclusive ten-minute window", () => {
+    const exactBoundary = [
+      transfer({
+        id: "in-1",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T10:00:00Z",
+      }),
+      transfer({
+        id: "out-1",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T10:10:00Z",
+      }),
+      transfer({
+        id: "in-2",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T11:00:00Z",
+      }),
+      transfer({
+        id: "out-2",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T11:10:00Z",
+      }),
+    ];
+    expect(
+      deriveBehaviorSignals(exactBoundary).some(({ title }) =>
+        title.includes("rapid"),
+      ),
+    ).toBe(true);
+
+    const reversed = [
+      transfer({
+        id: "out-early-1",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T10:00:00Z",
+      }),
+      transfer({
+        id: "in-late-1",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T10:01:00Z",
+      }),
+      transfer({
+        id: "out-early-2",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T11:00:00Z",
+      }),
+      transfer({
+        id: "in-late-2",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T11:01:00Z",
+      }),
+    ];
+    expect(
+      deriveBehaviorSignals(reversed).some(({ title }) =>
+        title.includes("rapid"),
+      ),
+    ).toBe(false);
+
+    const tooLate = exactBoundary.map((item) =>
+      item.id === "out-1" || item.id === "out-2"
+        ? {
+            ...item,
+            block_time: new Date(
+              Date.parse(item.block_time!) + 1,
+            ).toISOString(),
+          }
+        : item,
+    );
+    expect(
+      deriveBehaviorSignals(tooLate).some(({ title }) =>
+        title.includes("rapid"),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects amounts outside the ratio band and legs from the same transaction", () => {
+    const signals = deriveBehaviorSignals([
+      transfer({
+        id: "in-69",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T10:00:00Z",
+      }),
+      transfer({
+        id: "out-69",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "69",
+        block_time: "2026-11-16T10:01:00Z",
+      }),
+      transfer({
+        id: "in-131",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T11:00:00Z",
+      }),
+      transfer({
+        id: "out-131",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "131",
+        block_time: "2026-11-16T11:01:00Z",
+      }),
+      transfer({
+        id: "in-same-tx-a",
+        transaction_hash: "same-signature-a",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T12:00:00Z",
+      }),
+      transfer({
+        id: "out-same-tx-a",
+        transaction_hash: "same-signature-a",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T12:01:00Z",
+      }),
+      transfer({
+        id: "in-same-tx-b",
+        transaction_hash: "same-signature-b",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T13:00:00Z",
+      }),
+      transfer({
+        id: "out-same-tx-b",
+        transaction_hash: "same-signature-b",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T13:01:00Z",
+      }),
+    ]);
+
+    expect(signals.some(({ title }) => title.includes("rapid"))).toBe(false);
+  });
+
+  it("ignores unconfirmed events and missing on-chain timestamps for rapid signals", () => {
+    const signals = deriveBehaviorSignals([
+      transfer({
+        id: "in-1",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T10:00:00Z",
+      }),
+      transfer({
+        id: "out-1",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T10:01:00Z",
+      }),
+      transfer({
+        id: "in-2",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T11:00:00Z",
+        confirmed: false,
+      }),
+      transfer({
+        id: "out-2",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: null,
+        observed_at: "2026-11-16T11:01:00Z",
+      }),
+    ]);
+
+    expect(signals.some(({ title }) => title.includes("rapid"))).toBe(false);
+  });
+
+  it("does not combine pairs that fall outside the same rolling 24-hour window", () => {
+    const signals = deriveBehaviorSignals([
+      transfer({
+        id: "old-in",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-14T10:00:00Z",
+      }),
+      transfer({
+        id: "old-out",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-14T10:01:00Z",
+      }),
+      transfer({
+        id: "recent-in",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T10:00:00Z",
+      }),
+      transfer({
+        id: "recent-out",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T10:01:00Z",
+      }),
+    ]);
+
+    expect(signals.some(({ title }) => title.includes("rapid"))).toBe(false);
+  });
+
+  it("pairs each event at most once, ignores duplicates, and caps displayed examples", () => {
+    const transfers = [
+      transfer({
+        id: "in-a",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T10:00:00Z",
+      }),
+      transfer({
+        id: "in-b",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T10:02:00Z",
+      }),
+      transfer({
+        id: "out-a",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T10:03:00Z",
+      }),
+      transfer({
+        id: "out-b",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T10:04:00Z",
+      }),
+      transfer({
+        id: "in-c",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T11:00:00Z",
+      }),
+      transfer({
+        id: "out-c",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T11:01:00Z",
+      }),
+      transfer({
+        id: "in-d",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        block_time: "2026-11-16T12:00:00Z",
+      }),
+      transfer({
+        id: "out-d",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "100",
+        block_time: "2026-11-16T12:01:00Z",
+      }),
+    ];
+    const signals = deriveBehaviorSignals([
+      ...transfers,
+      transfers[0],
+      transfers[0],
+      transfers[2],
+    ]).filter(({ title }) => title.includes("rapid"));
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0].detail).toContain("4 non-overlapping");
+    expect(signals[0].detail).toContain("showing 3 of 4 pairs");
+    expect(signals[0].severity).toBe("medium");
+  });
 });

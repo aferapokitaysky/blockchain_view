@@ -5,7 +5,7 @@ import type {
 } from "../investigations/api";
 import { deriveBehaviorSignals } from "./behaviorSignals";
 
-export const RISK_MODEL_VERSION = "0.2.0";
+export const RISK_MODEL_VERSION = "0.3.0";
 
 export type RiskSignal = {
   id: string;
