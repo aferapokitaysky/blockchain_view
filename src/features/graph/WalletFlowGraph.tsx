@@ -304,8 +304,8 @@ export function WalletFlowGraph({ histories }: WalletFlowGraphProps) {
               {pathAnalysis.paths.length > 12 && (
                 <p>
                   Showing 12 of {pathAnalysis.paths.length} reachable addresses;
-                  the graph highlights all shortest paths within the selected
-                  depth.
+                  the graph highlights one selected shortest path per reachable
+                  address within the selected depth.
                 </p>
               )}
             </div>
