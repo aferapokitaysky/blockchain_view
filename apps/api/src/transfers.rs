@@ -42,29 +42,36 @@ struct EsploraStatus {
 
 #[derive(Debug, Serialize)]
 pub struct SyncResult {
-    provider: String,
-    fetched: usize,
-    saved: usize,
-    pages: usize,
-    may_have_more_history: bool,
-    observed_at: DateTime<Utc>,
+    pub provider: String,
+    pub fetched: usize,
+    pub saved: usize,
+    pub pages: usize,
+    pub may_have_more_history: bool,
+    pub observed_at: DateTime<Utc>,
 }
 
 #[derive(Debug, FromRow, Serialize)]
 pub struct ObservedTransfer {
-    id: Uuid,
-    tracked_address_id: Uuid,
-    network: String,
-    transaction_hash: String,
-    direction: String,
-    received_amount: String,
-    spent_amount: String,
-    asset: String,
-    block_height: Option<i64>,
-    block_time: Option<DateTime<Utc>>,
-    confirmed: bool,
-    provider: String,
-    observed_at: DateTime<Utc>,
+    pub id: Uuid,
+    pub tracked_address_id: Uuid,
+    pub network: String,
+    pub transaction_hash: String,
+    pub event_index: i64,
+    pub transfer_kind: String,
+    pub direction: String,
+    pub received_amount: String,
+    pub spent_amount: String,
+    pub asset: String,
+    pub token_contract_address: Option<String>,
+    pub token_decimals: Option<i16>,
+    pub from_address: Option<String>,
+    pub to_address: Option<String>,
+    pub block_height: Option<i64>,
+    pub block_time: Option<DateTime<Utc>>,
+    pub confirmed: bool,
+    pub provider: String,
+    pub source_host: String,
+    pub observed_at: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -87,11 +94,19 @@ pub(crate) async fn sync_address(
     .ok_or(ApiError::NotFound)?;
 
     if address.network != "bitcoin" {
-        return Err(ApiError::UnsupportedNetwork);
+        let result = crate::evm_sync::sync_evm_address(
+            &state,
+            address_id,
+            &address.network,
+            &address.address,
+        )
+        .await?;
+        return Ok((StatusCode::OK, Json(result)));
     }
 
     let transactions = fetch_history(&state, &address.address).await?;
     let provider = provider_name(&state.bitcoin_esplora_url);
+    let source_host = provider_host(&state.bitcoin_esplora_url);
     let observed_at = Utc::now();
     let mut saved = 0;
     for transaction in &transactions.items {
@@ -99,9 +114,9 @@ pub(crate) async fn sync_address(
             continue;
         };
         let result = sqlx::query(
-            "INSERT INTO observed_transfers (tracked_address_id, network, transaction_hash, direction, received_amount, spent_amount, asset, block_height, block_time, confirmed, provider, observed_at) \
-             VALUES ($1, 'bitcoin', $2, $3, $4, $5, 'BTC', $6, $7, $8, $9, $10) \
-             ON CONFLICT (tracked_address_id, transaction_hash) DO UPDATE SET direction = EXCLUDED.direction, received_amount = EXCLUDED.received_amount, spent_amount = EXCLUDED.spent_amount, block_height = EXCLUDED.block_height, block_time = EXCLUDED.block_time, confirmed = EXCLUDED.confirmed, provider = EXCLUDED.provider, observed_at = EXCLUDED.observed_at",
+            "INSERT INTO observed_transfers (tracked_address_id, network, transaction_hash, event_index, transfer_kind, direction, received_amount, spent_amount, asset, block_height, block_time, confirmed, provider, source_host, observed_at) \
+             VALUES ($1, 'bitcoin', $2, -1, 'bitcoin', $3, $4, $5, 'BTC', $6, $7, $8, $9, $10, $11) \
+             ON CONFLICT (tracked_address_id, transaction_hash, transfer_kind, event_index) DO UPDATE SET direction = EXCLUDED.direction, received_amount = EXCLUDED.received_amount, spent_amount = EXCLUDED.spent_amount, block_height = EXCLUDED.block_height, block_time = EXCLUDED.block_time, confirmed = EXCLUDED.confirmed, provider = EXCLUDED.provider, source_host = EXCLUDED.source_host, observed_at = EXCLUDED.observed_at",
         )
         .bind(address_id)
         .bind(transfer.transaction_hash)
@@ -112,6 +127,7 @@ pub(crate) async fn sync_address(
         .bind(transfer.block_time)
         .bind(transfer.confirmed)
         .bind(&provider)
+        .bind(&source_host)
         .bind(observed_at)
         .execute(&state.database)
         .await?;
@@ -132,11 +148,20 @@ pub(crate) async fn sync_address(
 }
 
 fn provider_name(base_url: &str) -> String {
+    match reqwest::Url::parse(base_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+    {
+        Some(host) => format!("Esplora ({host})"),
+        None => "Esplora endpoint".into(),
+    }
+}
+
+fn provider_host(base_url: &str) -> String {
     reqwest::Url::parse(base_url)
         .ok()
         .and_then(|url| url.host_str().map(str::to_owned))
-        .map(|host| format!("Esplora ({host})"))
-        .unwrap_or_else(|| "Esplora endpoint".into())
+        .unwrap_or_else(|| "endpoint".into())
 }
 
 pub(crate) async fn list_address_transfers(
@@ -155,7 +180,7 @@ pub(crate) async fn list_address_transfers(
     }
 
     let transfers = sqlx::query_as::<_, ObservedTransfer>(
-        "SELECT id, tracked_address_id, network, transaction_hash, direction, received_amount::text AS received_amount, spent_amount::text AS spent_amount, asset, block_height, block_time, confirmed, provider, observed_at FROM observed_transfers WHERE tracked_address_id = $1 ORDER BY block_time DESC NULLS LAST, observed_at DESC LIMIT 500",
+        "SELECT id, tracked_address_id, network, transaction_hash, event_index, transfer_kind, direction, received_amount::text AS received_amount, spent_amount::text AS spent_amount, asset, token_contract_address, token_decimals, from_address, to_address, block_height, block_time, confirmed, provider, source_host, observed_at FROM observed_transfers WHERE tracked_address_id = $1 ORDER BY block_time DESC NULLS LAST, observed_at DESC LIMIT 500",
     )
     .bind(address_id)
     .fetch_all(&state.database)

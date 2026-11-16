@@ -2,7 +2,7 @@
 
 Open-source workspace for exploring how funds move between blockchain addresses.
 
-> **Project status: early prototype.** The graph, wallet labels, balances, transaction table, and risk signals in the UI are illustrative demo data. The API can fetch Bitcoin address history on demand from Blockstream Esplora; it does not continuously monitor addresses. EVM sync, sanctions data, and commercial screening are not connected. Do not use demo values for operational or compliance decisions.
+> **Project status: early prototype.** The graph, wallet labels, balances, transaction table, and risk signals in the UI are illustrative demo data. The API can fetch Bitcoin history from Blockstream Esplora and EVM history from Blockscout on demand; it does not continuously monitor addresses. EVM support is limited to Ethereum, Base, and Arbitrum One. Sanctions data and commercial screening are not connected. Do not use demo values for operational or compliance decisions.
 
 **Documentation:** [Русский](README.ru.md) · [Українська](README.uk.md) · [English](README.md)
 
@@ -27,7 +27,7 @@ The interface prototype includes a wallet-flow graph, network filters, a recent-
 - **Persistent storage:** PostgreSQL, with an initial migration for investigations, tracked addresses, and risk signals.
 - **Cache and coordination:** Redis, checked by the API readiness endpoint.
 
-The API supports creating and listing investigations, adding and listing tracked addresses, manually syncing Bitcoin address history, and CRUD for analyst-entered risk signals. The wallet form uses the API to save addresses and offers an on-demand sync action for Bitcoin; a history dialog then displays saved observations and their source. The graph, balances, risk panel, and main transaction table remain demo data. Risk-signal records are stored with source provenance but do not populate the demo risk panel or change its provisional exposure score. The API has no authentication and is intended for local development only. There is no continuous sync, EVM sync, sanctions feed, or commercial screening provider.
+The API supports creating and listing investigations, adding and listing tracked addresses, manually syncing Bitcoin and selected EVM transaction history, and investigation-scoped CRUD for analyst-entered risk signals. The wallet form saves addresses and offers on-demand sync; the history dialog shows saved observations and their source. The graph, balances, risk panel, and main transaction table remain demo data. Risk signals retain source provenance but do not populate the demo risk panel or alter its provisional exposure score. The API has no authentication and is intended for local development only. There is no continuous sync, sanctions feed, or commercial screening provider.
 
 - `GET` / `POST` `/api/v1/investigations`
 - `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses`
@@ -36,11 +36,11 @@ The API supports creating and listing investigations, adding and listing tracked
 - `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals`
 - `GET` / `PUT` / `DELETE` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}`
 
-## Bitcoin transaction sync
+## On-demand transaction sync
 
-Bitcoin sync is on demand only: call the sync endpoint for a tracked Bitcoin address, then read its stored results from the transfers endpoint. The provider is Blockstream Esplora; set `BITCOIN_ESPLORA_URL` to use another compatible endpoint (default: `https://blockstream.info/api`). EVM transaction sync is unavailable.
+History sync is on demand only. Bitcoin uses Blockstream Esplora. EVM uses Blockscout REST v2 for Ethereum (chain ID 1), Base (8453), and Arbitrum One (42161); other EVM networks are unsupported. Configure `BLOCKSCOUT_BASE_URL` (default `https://api.blockscout.com`) and optionally `BLOCKSCOUT_API_KEY` (sent as a bearer token; provider access may require a key). No credentials are stored in the repository.
 
-Each sync fetches the initial address-history page, which can include current unconfirmed mempool transactions, then paginates confirmed history up to 20 pages total (up to 500 confirmed transactions). Results contain address-level input value spent and output value received per transaction, both in satoshis; these are totals, not a net balance change. The transfers endpoint returns up to 500 most recent stored records for that address. No background polling or continuous monitoring runs.
+Bitcoin sync keeps its existing bounded Esplora behavior. EVM sync fetches normal native transactions, successful internal native-value transfers, and ERC-20 transfer events in parallel. Raw integer amounts, token contract, optional decimals, event index, endpoints, time, block, and source host are stored. Each EVM stream is capped at 10 pages of 50 rows; `may_have_more_history` indicates when the provider exposed another page at that cap. This is an on-demand provider view, not a complete index: other EVM networks, token standards, and provider omissions are outside coverage. Multiple events in one transaction remain separate. The transfers endpoint returns up to 500 recent records. No background polling runs.
 
 ## Run the local API
 
@@ -103,7 +103,7 @@ cargo test --manifest-path apps/api/Cargo.toml --all-features
 
 ## Data sources and licensing
 
-Bitcoin address sync reads transaction history from the public Blockstream Esplora API on demand. This provides blockchain transaction data, not identity attribution or comprehensive wallet-risk coverage. No sanctions or commercial screening dataset is connected. Future adapters must document provider terms, coverage, update cadence, attribution rules, and any redistribution limits. For sanctions screening, prefer machine-readable official datasets where their terms allow it; OFAC explicitly says its web search interface is intended for individual searches rather than continuous automated queries ([OFAC FAQ](https://ofac.treasury.gov/faqs/287)). Commercial blockchain analytics require a separately licensed provider account.
+Bitcoin and selected EVM address sync read history from Blockstream Esplora and Blockscout on demand. This provides blockchain transaction data, not identity attribution or comprehensive wallet-risk coverage. No sanctions or commercial screening dataset is connected. Future adapters must document provider terms, coverage, update cadence, attribution rules, and any redistribution limits. For sanctions screening, prefer machine-readable official datasets where their terms allow it; OFAC explicitly says its web search interface is intended for individual searches rather than continuous automated queries ([OFAC FAQ](https://ofac.treasury.gov/faqs/287)). Commercial blockchain analytics require a separately licensed provider account.
 
 ## Contributing
 

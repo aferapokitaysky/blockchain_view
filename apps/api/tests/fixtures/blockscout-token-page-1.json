@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "transaction_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+      "log_index": 4,
+      "from": { "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      "to": { "hash": "0xcccccccccccccccccccccccccccccccccccccccc" },
+      "timestamp": "2026-11-16T10:21:30Z",
+      "block_number": 201,
+      "token": { "address_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "decimals": "6", "symbol": "USDC" },
+      "total": { "value": "1500000" },
+      "token_type": "ERC-20"
+    }
+  ],
+  "next_page_params": { "block_number": 200, "index": 4 }
+}

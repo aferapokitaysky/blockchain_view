@@ -21,7 +21,7 @@ Wallet form / local API request
    records   readiness  on-demand Bitcoin history
 ```
 
-The API creates and lists investigations and tracked addresses. A manual `POST` sync request retrieves Bitcoin address history from the configured Esplora-compatible service, normalizes address activity, and upserts observed transfers in PostgreSQL. A separate `GET` returns up to 500 most recent saved transfer rows for that tracked address.
+The API creates and lists investigations and tracked addresses. A manual `POST` sync request retrieves Bitcoin history from the configured Esplora-compatible service or supported EVM history from Blockscout, normalizes address activity, and upserts observed transfers in PostgreSQL. EVM rows retain event identity and direct sender/recipient addresses. A separate `GET` returns up to 500 most recent saved transfer rows for that tracked address.
 
 For each transaction, records preserve the configured Esplora host, observation time, transaction hash, confirmation state, block metadata, and address-level input/output totals. `spent_amount` is the value in inputs attributed to the tracked address; `received_amount` is the value of outputs to it. Amounts are stored as integer satoshis and serialized as strings to avoid precision loss. These are independent input/output totals, not a net balance change.
 
@@ -32,7 +32,7 @@ The risk-signal API stores analyst-entered evidence scoped to an investigation a
 - Bitcoin history is fetched only when the sync endpoint is called. There is no scheduled polling or continuous monitoring.
 - Sync requests the initial Esplora history page, which may include unconfirmed mempool entries, then follows confirmed history for at most 20 pages total. This is up to 500 confirmed transactions, plus any mempool entries in the initial response.
 - The transfers endpoint returns at most 500 recent stored records. A sync can fetch more than that when the first page includes mempool entries, so the read endpoint is a bounded recent view.
-- Bitcoin is the only network with transaction-history sync. EVM history sync is unsupported. Esplora data provides transaction observations, not identity attribution or complete address coverage.
+- Bitcoin history sync uses Esplora. On-demand EVM history uses Blockscout for Ethereum (1), Base (8453), and Arbitrum One (42161), fetching normal native transactions, successful internal native transfers, and ERC-20 events. Each stream is capped at 10 pages of 50 rows; `may_have_more_history` reports when a provider cursor remains at the cap. This is not a complete index or identity attribution; other EVM networks and token standards are excluded.
 - The API supports create, list, read, replace, and delete operations for analyst-entered signals. No sanctions feed or commercial screening provider is connected, and these records do not alter the demo exposure score.
 
 ## Network identity and address handling

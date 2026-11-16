@@ -7,12 +7,15 @@ use sqlx::PgPool;
 use tokio::time::timeout;
 use tracing::warn;
 
+use crate::evm_sync::BlockscoutClient;
+
 #[derive(Clone)]
 pub struct HealthState {
     pub database: PgPool,
     pub redis: RedisClient,
     pub http_client: reqwest::Client,
     pub bitcoin_esplora_url: String,
+    pub blockscout: BlockscoutClient,
 }
 
 #[cfg(test)]
@@ -25,6 +28,8 @@ pub(crate) fn unavailable_state() -> HealthState {
             .expect("тестовый адрес Redis должен разбираться"),
         http_client: reqwest::Client::new(),
         bitcoin_esplora_url: "http://127.0.0.1:1/api".into(),
+        blockscout: BlockscoutClient::new("http://127.0.0.1:1", None, reqwest::Client::new())
+            .expect("тестовая конфигурация Blockscout должна разбираться"),
     }
 }
 

@@ -5,7 +5,7 @@ use tokio::net::TcpListener;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
-use tracefold_api::{app, config::Config, health::HealthState};
+use tracefold_api::{app, config::Config, evm_sync::BlockscoutClient, health::HealthState};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -33,6 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()?;
     let bitcoin_esplora_url = std::env::var("BITCOIN_ESPLORA_URL")
         .unwrap_or_else(|_| "https://blockstream.info/api".into());
+    let blockscout = BlockscoutClient::from_env(http_client.clone())?;
 
     axum::serve(
         listener,
@@ -41,6 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             redis,
             http_client,
             bitcoin_esplora_url,
+            blockscout,
         }),
     )
     .with_graceful_shutdown(shutdown_signal())
