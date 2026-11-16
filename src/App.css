@@ -1436,6 +1436,48 @@ tbody tr:hover {
     monospace;
   color: #9eaca3;
 }
+.activity-message {
+  height: 76px;
+  color: #8b9890;
+  text-align: center;
+  white-space: normal;
+}
+.activity-error {
+  color: #e39a91;
+}
+.activity-error .text-action {
+  margin-left: 10px;
+}
+.activity-source {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: #b9c7bf;
+  font-size: 9px;
+}
+.activity-source small {
+  color: #748179;
+  font-size: 8px;
+}
+.feed-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid #1c2723;
+  color: #849188;
+  font-size: 9px;
+}
+.feed-pagination > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.feed-pagination .text-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .flow-direction {
   display: flex;
   align-items: center;

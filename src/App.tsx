@@ -57,9 +57,14 @@ import {
 } from "./features/investigations/api";
 import { WalletFlowGraph } from "./features/graph/WalletFlowGraph";
 import { formatObservedAmount } from "./features/investigations/formatAssetAmount";
+import {
+  buildTransactionFeed,
+  formatFeedTime,
+} from "./features/investigations/transactionFeed";
 import "./App.css";
 
 type Network = "Ethereum" | "Bitcoin" | "Base" | "Arbitrum";
+const TRANSACTIONS_PER_PAGE = 50;
 type GraphNode = {
   id: string;
   address: string;
@@ -71,18 +76,6 @@ type GraphNode = {
   tag?: string;
   central?: boolean;
 };
-type Transfer = {
-  id: string;
-  from: string;
-  to: string;
-  amount: string;
-  token: string;
-  time: string;
-  network: Network;
-  direction: "in" | "out";
-  status: "confirmed" | "pending";
-};
-
 const nodes: GraphNode[] = [
   {
     id: "seed",
@@ -187,53 +180,6 @@ const edges = [
   ["glacier", "harbor", "1.04 ETH"],
   ["cove", "delta", "0.13 BTC"],
 ] as const;
-
-const transfers: Transfer[] = [
-  {
-    id: "0x9f…3ac1",
-    from: "Exchange wallet",
-    to: "Northstar",
-    amount: "2.45",
-    token: "ETH",
-    time: "2 min ago",
-    network: "Ethereum",
-    direction: "out",
-    status: "confirmed",
-  },
-  {
-    id: "bc1…9c7d",
-    from: "Unlabeled wallet",
-    to: "Exchange wallet",
-    amount: "0.84",
-    token: "BTC",
-    time: "18 min ago",
-    network: "Bitcoin",
-    direction: "in",
-    status: "confirmed",
-  },
-  {
-    id: "0x21…f0a8",
-    from: "Exchange wallet",
-    to: "Orbit Capital",
-    amount: "18,200",
-    token: "USDC",
-    time: "43 min ago",
-    network: "Base",
-    direction: "out",
-    status: "confirmed",
-  },
-  {
-    id: "0x8c…d122",
-    from: "Glacier",
-    to: "Exchange wallet",
-    amount: "4.12",
-    token: "ETH",
-    time: "1 hr ago",
-    network: "Arbitrum",
-    direction: "in",
-    status: "pending",
-  },
-];
 
 const networkMeta: Record<Network, { color: string }> = {
   Ethereum: { color: "#a98cff" },
@@ -521,14 +467,38 @@ function App() {
   const [screeningError, setScreeningError] = useState("");
   const [screeningResult, setScreeningResult] =
     useState<AddressScreeningResult | null>(null);
+  const [activityHistories, setActivityHistories] = useState<WalletHistory[]>(
+    [],
+  );
+  const [activityStatus, setActivityStatus] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const [activityError, setActivityError] = useState("");
+  const [activityRefreshKey, setActivityRefreshKey] = useState(0);
+  const [activityPage, setActivityPage] = useState(0);
   const [activeTab, setActiveTab] = useState("Overview");
   const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[0];
   const selectedTrackedAddress = trackedAddresses.find(
     (address) => address.id === selectedAddressId,
   );
-  const visibleTransfers = transfers.filter(
+  const transactionFeed = useMemo(
+    () => buildTransactionFeed(activityHistories),
+    [activityHistories],
+  );
+  const visibleTransfers = transactionFeed.filter(
     (transfer) =>
       activeNetwork === "All networks" || transfer.network === activeNetwork,
+  );
+  const activityPageCount = Math.ceil(
+    visibleTransfers.length / TRANSACTIONS_PER_PAGE,
+  );
+  const currentActivityPage = Math.min(
+    activityPage,
+    Math.max(0, activityPageCount - 1),
+  );
+  const pagedTransfers = visibleTransfers.slice(
+    currentActivityPage * TRANSACTIONS_PER_PAGE,
+    (currentActivityPage + 1) * TRANSACTIONS_PER_PAGE,
   );
 
   useEffect(() => {
@@ -594,6 +564,65 @@ function App() {
       void Promise.resolve().then(loadTrackedAddresses);
     }
   }, [apiStatus]);
+
+  useEffect(() => {
+    let isCurrent = true;
+    void Promise.resolve().then(async () => {
+      if (
+        apiStatus === "checking" ||
+        (apiStatus === "online" && addressesLoading)
+      ) {
+        if (isCurrent) setActivityStatus("loading");
+        return;
+      }
+      if (apiStatus !== "online") {
+        if (!isCurrent) return;
+        setActivityStatus("error");
+        setActivityError("The local API is unavailable. Start it and retry.");
+        return;
+      }
+      if (addressesError) {
+        if (!isCurrent) return;
+        setActivityStatus("error");
+        setActivityError(addressesError);
+        return;
+      }
+      if (trackedAddresses.length === 0) {
+        if (!isCurrent) return;
+        setActivityHistories([]);
+        setActivityError("");
+        setActivityStatus("ready");
+        return;
+      }
+
+      if (!isCurrent) return;
+      setActivityError("");
+      setActivityStatus("loading");
+      try {
+        const histories = await listTrackedWalletHistories(trackedAddresses);
+        if (!isCurrent) return;
+        setActivityHistories(histories);
+        setActivityStatus("ready");
+      } catch (error: unknown) {
+        if (!isCurrent) return;
+        setActivityError(
+          error instanceof ApiRequestError
+            ? error.message
+            : "Could not load saved transaction observations. Try again.",
+        );
+        setActivityStatus("error");
+      }
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [
+    activityRefreshKey,
+    addressesError,
+    addressesLoading,
+    apiStatus,
+    trackedAddresses,
+  ]);
 
   const handleSearch = (value: string) => {
     setQuery(value);
@@ -672,6 +701,7 @@ function App() {
         return;
       }
       setHistoryRecords(records);
+      setActivityRefreshKey((revision) => revision + 1);
       const coverage = result.may_have_more_history
         ? " The provider page limit was reached; older history may be missing."
         : "";
@@ -820,11 +850,12 @@ function App() {
               <button
                 key={network}
                 className={`network-item ${activeNetwork === network ? "active" : ""}`}
-                onClick={() =>
+                onClick={() => {
+                  setActivityPage(0);
                   setActiveNetwork(
                     activeNetwork === network ? "All networks" : network,
-                  )
-                }
+                  );
+                }}
               >
                 <NetworkMark network={network} />
                 <span>{network}</span>
@@ -837,9 +868,15 @@ function App() {
         <div className="usage-card">
           <div className="usage-head">
             <span>Data sources</span>
-            <span className="source-count">0 connected</span>
+            <span className="source-count">
+              {apiStatus === "online"
+                ? `${trackedAddresses.length} tracked`
+                : "API unavailable"}
+            </span>
           </div>
-          <p>Demo data only. Live blockchain feeds are not connected.</p>
+          <p>
+            Saved history loads on demand. Background monitoring is not enabled.
+          </p>
           <button
             onClick={() =>
               setNotice("No chain data provider is configured yet.")
@@ -1439,13 +1476,18 @@ function App() {
             <div className="activity-head">
               <div>
                 <h2>Recent transactions</h2>
-                <p>Latest movement across tracked addresses</p>
+                <p>Saved observations across tracked addresses</p>
               </div>
               <button
                 className="text-action"
-                onClick={() => setNotice("Открыт список всех транзакций")}
+                onClick={() =>
+                  setActivityRefreshKey((revision) => revision + 1)
+                }
+                disabled={
+                  activityStatus === "loading" || apiStatus !== "online"
+                }
               >
-                View all transactions <ExternalLink size={13} />
+                Reload saved history
               </button>
             </div>
             <div className="table-wrap">
@@ -1458,70 +1500,135 @@ function App() {
                     <th>Network</th>
                     <th>Time</th>
                     <th>Status</th>
-                    <th />
+                    <th>Tracked wallet · source</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleTransfers.map((transfer) => (
-                    <tr key={transfer.id}>
-                      <td>
-                        <span className="tx-id">{transfer.id}</span>
+                  {activityStatus === "loading" && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="activity-message"
+                        role="status"
+                      >
+                        Loading saved transaction observations…
                       </td>
-                      <td>
-                        <span className="flow-direction">
-                          {transfer.direction === "out" ? (
-                            <ArrowUpRight size={14} />
-                          ) : (
-                            <ArrowDownLeft size={14} />
-                          )}
-                          <span>
-                            {transfer.from}
-                            <small>
-                              {transfer.direction === "out" ? "to" : "from"}{" "}
-                              {transfer.to}
-                            </small>
-                          </span>
-                        </span>
-                      </td>
-                      <td>
-                        <b className="amount">
-                          {transfer.direction === "out" ? "−" : "+"}
-                          {transfer.amount} <small>{transfer.token}</small>
-                        </b>
-                      </td>
-                      <td>
-                        <span className="table-network">
-                          <NetworkMark network={transfer.network} />
-                          {transfer.network}
-                        </span>
-                      </td>
-                      <td className="time-cell">{transfer.time}</td>
-                      <td>
-                        <span className={`status ${transfer.status}`}>
-                          <i />
-                          {transfer.status === "confirmed"
-                            ? "Confirmed"
-                            : "Pending"}
-                        </span>
-                      </td>
-                      <td>
+                    </tr>
+                  )}
+                  {activityStatus === "error" && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="activity-message activity-error"
+                      >
+                        {activityError}
                         <button
-                          className="row-more"
-                          aria-label={`Транзакция ${transfer.id}`}
+                          className="text-action"
                           onClick={() =>
-                            setNotice(`Транзакция ${transfer.id} выбрана`)
+                            setActivityRefreshKey((revision) => revision + 1)
                           }
+                          disabled={apiStatus !== "online"}
                         >
-                          <MoreHorizontal size={16} />
+                          Retry
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  )}
+                  {activityStatus === "ready" &&
+                    pagedTransfers.map((transfer) => (
+                      <tr key={transfer.id}>
+                        <td>
+                          <span className="tx-id">
+                            {transfer.hash.length > 24
+                              ? `${transfer.hash.slice(0, 12)}…${transfer.hash.slice(-8)}`
+                              : transfer.hash}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="flow-direction">
+                            {transfer.direction === "outbound" ? (
+                              <ArrowUpRight size={14} />
+                            ) : transfer.direction === "both" ? (
+                              <GitBranch size={14} />
+                            ) : (
+                              <ArrowDownLeft size={14} />
+                            )}
+                            <span>
+                              {transfer.from}
+                              <small>to {transfer.to}</small>
+                            </span>
+                          </span>
+                        </td>
+                        <td>
+                          <b className="amount">
+                            {transfer.amount} <small>{transfer.asset}</small>
+                          </b>
+                        </td>
+                        <td>
+                          <span className="table-network">
+                            <NetworkMark network={transfer.network} />
+                            {transfer.network}
+                          </span>
+                        </td>
+                        <td className="time-cell">
+                          {formatFeedTime(transfer.occurredAt)}
+                        </td>
+                        <td>
+                          <span
+                            className={`status ${transfer.confirmed ? "confirmed" : "pending"}`}
+                          >
+                            <i />
+                            {transfer.confirmed ? "Confirmed" : "Unconfirmed"}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="activity-source">
+                            <strong>{transfer.trackedWallet}</strong>
+                            <small>{transfer.provider}</small>
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
-              {visibleTransfers.length === 0 && (
+              {activityStatus === "ready" && visibleTransfers.length === 0 && (
                 <div className="empty-state">
-                  No transactions for this network.
+                  {trackedAddresses.length === 0
+                    ? "No tracked wallets yet. Add an address to begin."
+                    : transactionFeed.length === 0
+                      ? "No saved observations yet. Sync a tracked wallet to load its history."
+                      : "No saved observations for this network."}
+                </div>
+              )}
+              {activityStatus === "ready" && activityPageCount > 1 && (
+                <div className="feed-pagination">
+                  <span>
+                    Showing {currentActivityPage * TRANSACTIONS_PER_PAGE + 1}–
+                    {Math.min(
+                      (currentActivityPage + 1) * TRANSACTIONS_PER_PAGE,
+                      visibleTransfers.length,
+                    )}{" "}
+                    of {visibleTransfers.length} observations
+                  </span>
+                  <div>
+                    <button
+                      className="text-action"
+                      onClick={() => setActivityPage(currentActivityPage - 1)}
+                      disabled={currentActivityPage === 0}
+                    >
+                      Previous
+                    </button>
+                    <span>
+                      {currentActivityPage + 1} / {activityPageCount}
+                    </span>
+                    <button
+                      className="text-action"
+                      onClick={() => setActivityPage(currentActivityPage + 1)}
+                      disabled={currentActivityPage >= activityPageCount - 1}
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1532,7 +1639,7 @@ function App() {
               <span>Open-source investigation workspace</span>
             </span>
             <span>
-              Data shown for demonstration <span>·</span>{" "}
+              Overview graph uses sample data <span>·</span>{" "}
               <button
                 onClick={() =>
                   setNotice("Источники данных подключаются в настройках")
