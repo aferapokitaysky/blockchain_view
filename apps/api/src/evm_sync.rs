@@ -3,6 +3,8 @@ use std::{
     env,
     net::IpAddr,
     str::FromStr,
+    sync::Arc,
+    time::{Duration, Instant},
 };
 
 use axum::http::HeaderValue;
@@ -11,19 +13,35 @@ use reqwest::{Client, Url};
 use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::Value;
 use thiserror::Error;
+use tokio::sync::RwLock;
 use tracing::warn;
 
-use crate::{ApiState, error::ApiError};
+use crate::{
+    ApiState,
+    error::ApiError,
+    networks::{self, NetworkInfo},
+};
 
 const MAX_PAGES: usize = 10;
 const ITEMS_PER_PAGE: &str = "50";
 const MAX_PAGE_BYTES: usize = 4 * 1024 * 1024;
+const NETWORK_CATALOG_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+const NETWORK_CATALOG_RETRY_DELAY: Duration = Duration::from_millis(200);
+const NETWORK_CATALOG_FAILURE_TTL: Duration = Duration::from_secs(60);
 
 #[derive(Clone)]
 pub struct BlockscoutClient {
     client: Client,
     base_url: Url,
     api_key: Option<HeaderValue>,
+    prefer_configured_base: bool,
+    catalog_cache: Arc<RwLock<Option<CachedNetworkCatalog>>>,
+}
+
+#[derive(Clone)]
+struct CachedNetworkCatalog {
+    expires_at: Instant,
+    networks: Vec<NetworkInfo>,
 }
 
 #[derive(Debug, Error)]
@@ -38,12 +56,17 @@ pub enum BlockscoutConfigError {
 
 impl BlockscoutClient {
     pub fn from_env(client: Client) -> Result<Self, BlockscoutConfigError> {
-        let base_url =
-            env::var("BLOCKSCOUT_BASE_URL").unwrap_or_else(|_| "https://api.blockscout.com".into());
+        let configured_base_url = env::var("BLOCKSCOUT_BASE_URL").ok();
+        let base_url = configured_base_url
+            .clone()
+            .unwrap_or_else(|| "https://api.blockscout.com".into());
         let api_key = env::var("BLOCKSCOUT_API_KEY")
             .ok()
             .filter(|value| !value.trim().is_empty());
-        Self::new(&base_url, api_key.as_deref(), client)
+        let mut provider = Self::new(&base_url, api_key.as_deref(), client)?;
+        provider.prefer_configured_base =
+            prefers_configured_base(&provider.base_url, provider.api_key.is_some());
+        Ok(provider)
     }
 
     pub fn new(
@@ -76,39 +99,151 @@ impl BlockscoutClient {
             client,
             base_url,
             api_key,
+            prefer_configured_base: true,
+            catalog_cache: Arc::new(RwLock::new(None)),
         })
     }
 
-    pub fn source_host(&self) -> String {
-        self.base_url.host_str().unwrap_or("unknown").to_owned()
+    fn source_host_for(&self, chain: &EvmChain) -> String {
+        self.provider_base_url(chain)
+            .host_str()
+            .unwrap_or("unknown")
+            .to_owned()
+    }
+
+    fn provider_base_url<'a>(&'a self, chain: &'a EvmChain) -> &'a Url {
+        if self.prefer_configured_base {
+            &self.base_url
+        } else {
+            chain.api_base_url().unwrap_or(&self.base_url)
+        }
+    }
+
+    pub(crate) async fn network_catalog(&self) -> Vec<NetworkInfo> {
+        if let Some(cached) = self.catalog_cache.read().await.as_ref()
+            && cached.expires_at > Instant::now()
+        {
+            return cached.networks.clone();
+        }
+
+        let mut cache = self.catalog_cache.write().await;
+        if let Some(cached) = cache.as_ref()
+            && cached.expires_at > Instant::now()
+        {
+            return cached.networks.clone();
+        }
+        match self.fetch_network_catalog().await {
+            Ok(networks) => {
+                *cache = Some(CachedNetworkCatalog {
+                    expires_at: Instant::now() + NETWORK_CATALOG_TTL,
+                    networks: networks.clone(),
+                });
+                return networks;
+            }
+            Err(_) => {
+                warn!(provider = %self.base_url.host_str().unwrap_or("unknown"), "Blockscout network catalog refresh failed");
+                if let Some(cached) = cache.as_mut() {
+                    cached.expires_at = Instant::now() + NETWORK_CATALOG_FAILURE_TTL;
+                } else {
+                    *cache = Some(CachedNetworkCatalog {
+                        expires_at: Instant::now() + NETWORK_CATALOG_FAILURE_TTL,
+                        networks: networks::fallback_catalog(),
+                    });
+                }
+            }
+        }
+
+        cache
+            .as_ref()
+            .map(|cached| cached.networks.clone())
+            .unwrap_or_else(networks::fallback_catalog)
+    }
+
+    async fn fetch_network_catalog(&self) -> Result<Vec<NetworkInfo>, ApiError> {
+        let url = self
+            .base_url
+            .join("/api/json/config")
+            .map_err(|_| ApiError::ProviderUnavailable)?;
+        let mut response = None;
+        for attempt in 0..2 {
+            match self.client.get(url.clone()).send().await {
+                Ok(result) if attempt == 0 && result.status().is_server_error() => {
+                    tokio::time::sleep(NETWORK_CATALOG_RETRY_DELAY).await;
+                }
+                Ok(result) => {
+                    response = Some(result);
+                    break;
+                }
+                Err(_) if attempt == 0 => {
+                    tokio::time::sleep(NETWORK_CATALOG_RETRY_DELAY).await;
+                }
+                Err(_) => return Err(ApiError::ProviderUnavailable),
+            }
+        }
+        let response = response.ok_or(ApiError::ProviderUnavailable)?;
+        if !response.status().is_success()
+            || response
+                .content_length()
+                .is_some_and(|length| length > networks::MAX_CATALOG_BYTES as u64)
+        {
+            return Err(ApiError::ProviderUnavailable);
+        }
+        let mut response = response;
+        let mut body = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| ApiError::ProviderUnavailable)?
+        {
+            if body.len() + chunk.len() > networks::MAX_CATALOG_BYTES {
+                return Err(ApiError::ProviderUnavailable);
+            }
+            body.extend_from_slice(&chunk);
+        }
+        let configured_universal_provider = self.api_key.is_some()
+            || (self.prefer_configured_base
+                && self.base_url.host_str() != Some("api.blockscout.com"));
+        networks::parse_blockscout_config(&body, configured_universal_provider)
+            .map_err(|_| ApiError::ProviderUnavailable)
+    }
+
+    pub(crate) async fn network_by_id(&self, id: &str) -> Option<NetworkInfo> {
+        self.network_catalog()
+            .await
+            .into_iter()
+            .find(|network| network.id == id)
     }
 
     async fn fetch_pages<T: DeserializeOwned>(
         &self,
-        chain_id: u64,
+        chain: &EvmChain,
         address: &str,
         endpoint: &str,
         extra_params: &[(&str, &str)],
     ) -> Result<FetchedPages<T>, ApiError> {
-        self.fetch_pages_bounded(chain_id, address, endpoint, extra_params, MAX_PAGES)
+        self.fetch_pages_bounded(chain, address, endpoint, extra_params, MAX_PAGES)
             .await
     }
 
     async fn fetch_pages_bounded<T: DeserializeOwned>(
         &self,
-        chain_id: u64,
+        chain: &EvmChain,
         address: &str,
         endpoint: &str,
         extra_params: &[(&str, &str)],
         max_pages: usize,
     ) -> Result<FetchedPages<T>, ApiError> {
-        let url = self
-            .base_url
-            .join(&format!(
-                "/{chain_id}/api/v2/addresses/{address}/{endpoint}"
-            ))
-            .map_err(|_| ApiError::ProviderUnavailable)?;
-        let host = self.source_host();
+        let base_url = self.provider_base_url(chain);
+        let universal_endpoint = self.prefer_configured_base || chain.api_base_url().is_none();
+        let source_host = base_url.host_str().unwrap_or("unknown").to_owned();
+        let url = history_endpoint_url(
+            base_url,
+            chain.chain_id(),
+            address,
+            endpoint,
+            universal_endpoint,
+        )?;
+        let host = source_host;
         let mut cursor: Option<BTreeMap<String, Value>> = None;
         let mut seen_cursors = HashSet::new();
         let mut items = Vec::new();
@@ -207,6 +342,30 @@ fn is_loopback_host(host: &str) -> bool {
         || IpAddr::from_str(host).is_ok_and(|address| address.is_loopback())
 }
 
+fn prefers_configured_base(base_url: &Url, has_api_key: bool) -> bool {
+    let is_public_aggregator = base_url.host_str() == Some("api.blockscout.com")
+        && base_url.scheme() == "https"
+        && base_url.path() == "/";
+    !is_public_aggregator || has_api_key
+}
+
+fn history_endpoint_url(
+    base_url: &Url,
+    chain_id: u64,
+    address: &str,
+    endpoint: &str,
+    universal_endpoint: bool,
+) -> Result<Url, ApiError> {
+    let path = if universal_endpoint {
+        format!("/{chain_id}/api/v2/addresses/{address}/{endpoint}")
+    } else {
+        format!("/api/v2/addresses/{address}/{endpoint}")
+    };
+    base_url
+        .join(&path)
+        .map_err(|_| ApiError::ProviderUnavailable)
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(bound(deserialize = "T: Deserialize<'de>"))]
 struct BlockscoutPage<T> {
@@ -221,24 +380,44 @@ pub(crate) struct FetchedPages<T> {
     pub may_have_more: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EvmChain {
-    Ethereum,
-    Base,
-    Arbitrum,
+#[derive(Clone, Debug)]
+pub(crate) struct EvmChain {
+    chain_id: u64,
+    native_asset: String,
+    api_base_url: Option<Url>,
 }
 
 impl EvmChain {
-    fn chain_id(self) -> u64 {
-        match self {
-            Self::Ethereum => 1,
-            Self::Base => 8453,
-            Self::Arbitrum => 42161,
+    fn new(chain_id: u64, native_asset: impl Into<String>, api_base_url: Option<Url>) -> Self {
+        Self {
+            chain_id,
+            native_asset: native_asset.into(),
+            api_base_url,
         }
     }
 
-    fn native_asset(self) -> &'static str {
-        "ETH"
+    fn chain_id(&self) -> u64 {
+        self.chain_id
+    }
+
+    fn native_asset(&self) -> &str {
+        &self.native_asset
+    }
+
+    fn api_base_url(&self) -> Option<&Url> {
+        self.api_base_url.as_ref()
+    }
+
+    fn from_network(network: NetworkInfo) -> Option<Self> {
+        if network.family != networks::NetworkFamily::Evm {
+            return None;
+        }
+        let chain_id = network.chain_id?;
+        Some(Self::new(
+            chain_id,
+            network.native_asset,
+            network.api_base_url,
+        ))
     }
 }
 
@@ -325,15 +504,10 @@ pub(crate) async fn fetch_history(
     address: &str,
 ) -> Result<(Vec<EvmTransfer>, usize, bool), ApiError> {
     let (transactions, internal_transactions, token_transfers) = tokio::try_join!(
-        provider.fetch_pages::<NativeTransaction>(chain.chain_id(), address, "transactions", &[]),
-        provider.fetch_pages::<InternalTransaction>(
-            chain.chain_id(),
-            address,
-            "internal-transactions",
-            &[]
-        ),
+        provider.fetch_pages::<NativeTransaction>(&chain, address, "transactions", &[]),
+        provider.fetch_pages::<InternalTransaction>(&chain, address, "internal-transactions", &[]),
         provider.fetch_pages::<TokenTransfer>(
-            chain.chain_id(),
+            &chain,
             address,
             "token-transfers",
             &[("type", "ERC-20")],
@@ -342,12 +516,13 @@ pub(crate) async fn fetch_history(
 
     let mut transfers = Vec::new();
     for transaction in &transactions.items {
-        if let Some(transfer) = normalize_native_transaction(transaction, address, chain) {
+        if let Some(transfer) = normalize_native_transaction(transaction, address, &chain) {
             transfers.push(transfer);
         }
     }
     for internal_transaction in &internal_transactions.items {
-        if let Some(transfer) = normalize_internal_transaction(internal_transaction, address, chain)
+        if let Some(transfer) =
+            normalize_internal_transaction(internal_transaction, address, &chain)
         {
             transfers.push(transfer);
         }
@@ -370,7 +545,7 @@ pub(crate) async fn fetch_history(
 fn normalize_internal_transaction(
     transaction: &InternalTransaction,
     tracked_address: &str,
-    chain: EvmChain,
+    chain: &EvmChain,
 ) -> Option<EvmTransfer> {
     if !transaction.success
         || transaction.index < 0
@@ -413,7 +588,7 @@ fn normalize_internal_transaction(
 fn normalize_native_transaction(
     transaction: &NativeTransaction,
     tracked_address: &str,
-    chain: EvmChain,
+    chain: &EvmChain,
 ) -> Option<EvmTransfer> {
     if transaction.status.as_deref() == Some("error") || !is_transaction_hash(&transaction.hash) {
         return None;
@@ -555,16 +730,19 @@ pub(crate) async fn sync_evm_address(
     network: &str,
     address: &str,
 ) -> Result<super::transfers::SyncResult, ApiError> {
-    let chain = match network {
-        "ethereum" => EvmChain::Ethereum,
-        "base" => EvmChain::Base,
-        "arbitrum" => EvmChain::Arbitrum,
-        _ => return Err(ApiError::UnsupportedNetwork),
-    };
+    let network_info = state
+        .blockscout
+        .network_by_id(network)
+        .await
+        .ok_or(ApiError::UnsupportedNetwork)?;
+    if !network_info.history_sync_available {
+        return Err(ApiError::ProviderUnavailable);
+    }
+    let chain = EvmChain::from_network(network_info).ok_or(ApiError::UnsupportedNetwork)?;
     let (transfers, pages, may_have_more_history) =
-        fetch_history(&state.blockscout, chain, address).await?;
+        fetch_history(&state.blockscout, chain.clone(), address).await?;
     let observed_at = Utc::now();
-    let source_host = state.blockscout.source_host();
+    let source_host = state.blockscout.source_host_for(&chain);
     let provider_name = format!("Blockscout ({source_host})");
     let mut transaction = state.database.begin().await?;
     let mut saved = 0;
@@ -631,7 +809,8 @@ mod tests {
 
     use super::{
         BlockscoutClient, EvmChain, InternalTransaction, NativeTransaction, TokenTransfer,
-        normalize_internal_transaction, normalize_native_transaction, normalize_token_transfer,
+        history_endpoint_url, normalize_internal_transaction, normalize_native_transaction,
+        normalize_token_transfer, prefers_configured_base,
     };
     use crate::error::ApiError;
 
@@ -639,9 +818,37 @@ mod tests {
 
     #[test]
     fn maps_supported_networks_to_explicit_chain_ids() {
-        assert_eq!(EvmChain::Ethereum.chain_id(), 1);
-        assert_eq!(EvmChain::Base.chain_id(), 8453);
-        assert_eq!(EvmChain::Arbitrum.chain_id(), 42161);
+        assert_eq!(EvmChain::new(1, "ETH", None).chain_id(), 1);
+        assert_eq!(EvmChain::new(8453, "ETH", None).chain_id(), 8453);
+        assert_eq!(EvmChain::new(42161, "ETH", None).chain_id(), 42161);
+    }
+
+    #[test]
+    fn builds_paths_for_universal_and_direct_blockscout_apis() {
+        let base = reqwest::Url::parse("https://api.blockscout.com/").unwrap();
+        let direct = reqwest::Url::parse("https://eth.blockscout.com/").unwrap();
+
+        assert_eq!(
+            history_endpoint_url(&base, 10, TRACKED, "transactions", true)
+                .unwrap()
+                .as_str(),
+            format!("https://api.blockscout.com/10/api/v2/addresses/{TRACKED}/transactions")
+        );
+        assert_eq!(
+            history_endpoint_url(&direct, 1, TRACKED, "transactions", false)
+                .unwrap()
+                .as_str(),
+            format!("https://eth.blockscout.com/api/v2/addresses/{TRACKED}/transactions")
+        );
+    }
+
+    #[test]
+    fn uses_public_instances_without_a_key_and_multichain_api_with_a_key() {
+        let aggregator = reqwest::Url::parse("https://api.blockscout.com/").unwrap();
+        let custom = reqwest::Url::parse("https://blockscout.example.org/").unwrap();
+        assert!(!prefers_configured_base(&aggregator, false));
+        assert!(prefers_configured_base(&aggregator, true));
+        assert!(prefers_configured_base(&custom, false));
     }
 
     #[test]
@@ -649,7 +856,8 @@ mod tests {
         let fixture = include_str!("../tests/fixtures/blockscout-native.json");
         let transaction: NativeTransaction = serde_json::from_str(fixture).unwrap();
         let transfer =
-            normalize_native_transaction(&transaction, TRACKED, EvmChain::Ethereum).unwrap();
+            normalize_native_transaction(&transaction, TRACKED, &EvmChain::new(1, "ETH", None))
+                .unwrap();
 
         assert_eq!(transfer.direction, "outbound");
         assert_eq!(transfer.spent_amount, "1000000000000000000");
@@ -662,8 +870,12 @@ mod tests {
     fn parses_successful_internal_native_transfer_and_skips_failed_calls() {
         let fixture = include_str!("../tests/fixtures/blockscout-internal.json");
         let transaction: InternalTransaction = serde_json::from_str(fixture).unwrap();
-        let transfer =
-            normalize_internal_transaction(&transaction, TRACKED, EvmChain::Base).unwrap();
+        let transfer = normalize_internal_transaction(
+            &transaction,
+            TRACKED,
+            &EvmChain::new(8453, "ETH", None),
+        )
+        .unwrap();
         assert_eq!(transfer.direction, "outbound");
         assert_eq!(transfer.spent_amount, "42000000000000000");
         assert_eq!(transfer.transfer_kind, "evm_internal");
@@ -674,7 +886,10 @@ mod tests {
             &fixture.replace("\"success\": true", "\"success\": false"),
         )
         .unwrap();
-        assert!(normalize_internal_transaction(&failed, TRACKED, EvmChain::Base).is_none());
+        assert!(
+            normalize_internal_transaction(&failed, TRACKED, &EvmChain::new(8453, "ETH", None))
+                .is_none()
+        );
     }
 
     #[test]
@@ -714,7 +929,12 @@ mod tests {
         .await;
 
         let pages = provider
-            .fetch_pages::<NativeTransaction>(1, TRACKED, "transactions", &[])
+            .fetch_pages::<NativeTransaction>(
+                &EvmChain::new(1, "ETH", None),
+                TRACKED,
+                "transactions",
+                &[],
+            )
             .await
             .unwrap();
         let requests = state.requests.lock().unwrap();
@@ -735,6 +955,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fetches_history_from_a_direct_instance_without_a_chain_id_path_prefix() {
+        let (mut provider, state, server) = fixture_provider(vec![(
+            StatusCode::OK,
+            include_str!("../tests/fixtures/blockscout-native-page-2.json"),
+        )])
+        .await;
+        provider.prefer_configured_base = false;
+        let chain = EvmChain::new(10, "ETH", Some(provider.base_url.clone()));
+
+        let pages = provider
+            .fetch_pages::<NativeTransaction>(&chain, TRACKED, "transactions", &[])
+            .await
+            .unwrap();
+        let requests = state.requests.lock().unwrap();
+        server.abort();
+
+        assert_eq!(pages.items.len(), 1);
+        assert_eq!(requests.len(), 1);
+    }
+
+    #[tokio::test]
     async fn marks_history_incomplete_when_the_page_cap_is_reached() {
         let (provider, state, server) = fixture_provider(vec![(
             StatusCode::OK,
@@ -743,7 +984,13 @@ mod tests {
         .await;
 
         let pages = provider
-            .fetch_pages_bounded::<NativeTransaction>(1, TRACKED, "transactions", &[], 1)
+            .fetch_pages_bounded::<NativeTransaction>(
+                &EvmChain::new(1, "ETH", None),
+                TRACKED,
+                "transactions",
+                &[],
+                1,
+            )
             .await
             .unwrap();
         let requests = state.requests.lock().unwrap();
@@ -763,11 +1010,59 @@ mod tests {
         .await;
 
         let result = provider
-            .fetch_pages::<NativeTransaction>(1, TRACKED, "transactions", &[])
+            .fetch_pages::<NativeTransaction>(
+                &EvmChain::new(1, "ETH", None),
+                TRACKED,
+                "transactions",
+                &[],
+            )
             .await;
         server.abort();
 
         assert!(matches!(result, Err(ApiError::ProviderUnavailable)));
+    }
+
+    #[tokio::test]
+    async fn rejects_html_challenges_with_success_status() {
+        let (provider, _state, server) =
+            fixture_provider(vec![(StatusCode::OK, "<html>challenge</html>")]).await;
+
+        let result = provider
+            .fetch_pages::<NativeTransaction>(
+                &EvmChain::new(1, "ETH", None),
+                TRACKED,
+                "transactions",
+                &[],
+            )
+            .await;
+        server.abort();
+
+        assert!(matches!(result, Err(ApiError::ProviderUnavailable)));
+    }
+
+    #[tokio::test]
+    async fn does_not_follow_provider_redirects() {
+        let (provider, state, server) = fixture_provider(vec![
+            (StatusCode::TEMPORARY_REDIRECT, "{}"),
+            (
+                StatusCode::OK,
+                include_str!("../tests/fixtures/blockscout-native-page-2.json"),
+            ),
+        ])
+        .await;
+        let result = provider
+            .fetch_pages::<NativeTransaction>(
+                &EvmChain::new(1, "ETH", None),
+                TRACKED,
+                "transactions",
+                &[],
+            )
+            .await;
+        let request_count = state.requests.lock().unwrap().len();
+        server.abort();
+
+        assert!(matches!(result, Err(ApiError::ProviderUnavailable)));
+        assert_eq!(request_count, 1);
     }
 
     #[tokio::test]
@@ -782,7 +1077,12 @@ mod tests {
                 .unwrap();
 
         provider
-            .fetch_pages::<NativeTransaction>(1, TRACKED, "transactions", &[])
+            .fetch_pages::<NativeTransaction>(
+                &EvmChain::new(1, "ETH", None),
+                TRACKED,
+                "transactions",
+                &[],
+            )
             .await
             .unwrap();
         let saw_key = state.saw_bearer.lock().unwrap().to_owned();
@@ -821,10 +1121,14 @@ mod tests {
             .unwrap()
             .pop_front()
             .unwrap_or((StatusCode::INTERNAL_SERVER_ERROR, "{}"));
-        Response::builder()
-            .status(status)
-            .body(Body::from(body))
-            .unwrap()
+        let mut response = Response::builder().status(status);
+        if status.is_redirection() {
+            response = response.header(
+                axum::http::header::LOCATION,
+                "/1/api/v2/addresses/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/transactions",
+            );
+        }
+        response.body(Body::from(body)).unwrap()
     }
 
     async fn fixture_provider(
@@ -840,14 +1144,21 @@ mod tests {
                 "/{chain_id}/api/v2/addresses/{address}/{endpoint}",
                 get(fixture_handler),
             )
+            .route(
+                "/api/v2/addresses/{address}/{endpoint}",
+                get(fixture_handler),
+            )
             .with_state(state.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
         });
-        let provider =
-            BlockscoutClient::new(&format!("http://{address}"), None, Client::new()).unwrap();
+        let client = Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+        let provider = BlockscoutClient::new(&format!("http://{address}"), None, client).unwrap();
         (provider, state, server)
     }
 }
