@@ -3,6 +3,7 @@ import {
   checkApiHealth,
   listTrackedWallets,
   listWalletHistory,
+  screenWalletAddress,
   syncWalletHistory,
   trackWallet,
 } from "./api";
@@ -189,6 +190,27 @@ describe("investigation API client", () => {
       vi.fn().mockResolvedValueOnce(jsonResponse([transfer])),
     );
     await expect(listWalletHistory(evmAddress)).resolves.toEqual([transfer]);
+  });
+
+  it("screens the selected address against the local source snapshot", async () => {
+    const result = {
+      network: "ethereum",
+      status: "no_exact_match",
+      match_type: "exact_address",
+      source: null,
+      matches: [],
+      explanation: "No exact match in the imported snapshot.",
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(result));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      screenWalletAddress({ ...trackedAddress, network: "ethereum" }),
+    ).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8080/api/v1/screening/address?network=ethereum&address=0x0123456789abcdef0123456789abcdef01234567",
+      expect.objectContaining({ headers: {} }),
+    );
   });
 
   it("caps parallel address requests and reports history read errors accurately", async () => {

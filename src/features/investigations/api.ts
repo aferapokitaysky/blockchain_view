@@ -58,6 +58,30 @@ export type WalletHistory = {
   transfers: ObservedTransfer[];
 };
 
+export type AddressScreeningResult = {
+  network: string;
+  status:
+    | "exact_match"
+    | "no_exact_match"
+    | "source_not_imported"
+    | "network_not_covered";
+  match_type: "exact_address";
+  source: {
+    source_name: string;
+    published_at: string;
+    imported_at: string;
+    address_count: number;
+  } | null;
+  matches: Array<{
+    entity_uid: string;
+    entity_name: string;
+    programs: string[];
+    currency_code: string;
+    address: string;
+  }>;
+  explanation: string;
+};
+
 export class ApiRequestError extends Error {
   readonly status: number;
 
@@ -245,6 +269,21 @@ export async function listTrackedWalletHistories(
       address,
       transfers: await listWalletHistory(address),
     }),
+  );
+}
+
+export async function screenWalletAddress(
+  address: TrackedAddress,
+): Promise<AddressScreeningResult> {
+  const params = new URLSearchParams({
+    network: address.network,
+    address: address.address,
+  });
+  return requestJson<AddressScreeningResult>(
+    `/api/v1/screening/address?${params.toString()}`,
+    undefined,
+    REQUEST_TIMEOUT_MS,
+    "Could not check the address against the imported OFAC snapshot. Please try again.",
   );
 }
 
