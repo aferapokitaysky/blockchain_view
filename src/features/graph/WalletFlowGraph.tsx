@@ -1,11 +1,16 @@
 import { useMemo, useState } from "react";
 import type { WalletHistory } from "../investigations/api";
-import { buildWalletFlowGraph, findObservedPaths } from "./model";
+import {
+  buildWalletFlowGraph,
+  findObservedPaths,
+  getCounterpartyPrefill,
+} from "./model";
 import "./WalletFlowGraph.css";
 
 type WalletFlowGraphProps = {
   histories: WalletHistory[];
   networkNames?: Record<string, string>;
+  onTrackCounterparty: (network: string, address: string) => void;
 };
 
 function shortAddress(address: string): string {
@@ -15,6 +20,7 @@ function shortAddress(address: string): string {
 export function WalletFlowGraph({
   histories,
   networkNames = {},
+  onTrackCounterparty,
 }: WalletFlowGraphProps) {
   const graph = useMemo(() => buildWalletFlowGraph(histories), [histories]);
   const [selectedNode, setSelectedNode] = useState("");
@@ -40,6 +46,9 @@ export function WalletFlowGraph({
         (edge) => edge.from === focusedNode.id || edge.to === focusedNode.id,
       )
     : [];
+  const focusedCounterpartyPrefill = focusedNode
+    ? getCounterpartyPrefill(focusedNode)
+    : null;
 
   return (
     <section className="flow-graph-panel" aria-labelledby="flow-graph-title">
@@ -217,6 +226,19 @@ export function WalletFlowGraph({
                   {networkNames[focusedNode.network] ?? focusedNode.network}
                 </span>
                 <code>{focusedNode.address}</code>
+                {focusedCounterpartyPrefill && (
+                  <button
+                    className="text-action flow-track-counterparty"
+                    onClick={() =>
+                      onTrackCounterparty(
+                        focusedCounterpartyPrefill.network,
+                        focusedCounterpartyPrefill.address,
+                      )
+                    }
+                  >
+                    Track this address
+                  </button>
+                )}
               </div>
               <ul>
                 {focusedEdges.slice(0, 5).map((edge) => {

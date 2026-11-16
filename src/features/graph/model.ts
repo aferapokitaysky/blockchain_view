@@ -19,6 +19,18 @@ export type FlowNode = {
   y: number;
 };
 
+export type CounterpartyPrefill = {
+  address: string;
+  network: string;
+};
+
+export function getCounterpartyPrefill(
+  node: FlowNode,
+): CounterpartyPrefill | null {
+  if (node.tracked) return null;
+  return { address: node.address, network: node.network };
+}
+
 export type FlowEdge = {
   id: string;
   from: string;

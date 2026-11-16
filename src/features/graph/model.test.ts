@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildWalletFlowGraph,
   findObservedPaths,
+  getCounterpartyPrefill,
+  type FlowNode,
   type FlowEdge,
 } from "./model";
 import type { WalletHistory } from "../investigations/api";
@@ -42,6 +44,26 @@ function transfer(overrides: Record<string, unknown> = {}) {
 }
 
 describe("wallet flow graph", () => {
+  it("prefills only untracked counterparty addresses", () => {
+    const counterparty: FlowNode = {
+      id: "base:0x2222",
+      network: "base",
+      address: "0x2222222222222222222222222222222222222222",
+      label: "0x2222…222222",
+      tracked: false,
+      x: 0,
+      y: 0,
+    };
+
+    expect(getCounterpartyPrefill(counterparty)).toEqual({
+      address: counterparty.address,
+      network: "base",
+    });
+    expect(
+      getCounterpartyPrefill({ ...counterparty, tracked: true }),
+    ).toBeNull();
+  });
+
   it("builds a directional edge and keeps raw token decimals exact", () => {
     const history = {
       address: trackedAddress,

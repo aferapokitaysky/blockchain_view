@@ -41,6 +41,11 @@
   line-height: 1.45;
 }
 
+.flow-track-counterparty {
+  justify-self: start;
+  padding: 0;
+}
+
 .flow-node.is-origin .flow-node-core {
   fill: #65502d;
   stroke: #e7c478;
