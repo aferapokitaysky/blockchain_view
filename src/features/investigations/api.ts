@@ -29,6 +29,22 @@ export type SyncResult = {
   observed_at: string;
 };
 
+export type ObservedTransfer = {
+  id: string;
+  tracked_address_id: string;
+  network: string;
+  transaction_hash: string;
+  direction: "inbound" | "outbound" | "both";
+  received_amount: string;
+  spent_amount: string;
+  asset: string;
+  block_height: number | null;
+  block_time: string | null;
+  confirmed: boolean;
+  provider: string;
+  observed_at: string;
+};
+
 export class ApiRequestError extends Error {
   readonly status: number;
 
@@ -142,6 +158,14 @@ export async function syncWalletHistory(
     `/api/v1/investigations/${address.investigation_id}/addresses/${address.id}/sync`,
     { method: "POST" },
     SYNC_TIMEOUT_MS,
+  );
+}
+
+export async function listWalletHistory(
+  address: TrackedAddress,
+): Promise<ObservedTransfer[]> {
+  return requestJson<ObservedTransfer[]>(
+    `/api/v1/investigations/${address.investigation_id}/addresses/${address.id}/transfers`,
   );
 }
 
