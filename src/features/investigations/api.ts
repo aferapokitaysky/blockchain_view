@@ -43,6 +43,9 @@ export type ObservedTransfer = {
   confirmed: boolean;
   provider: string;
   observed_at: string;
+  event_index?: number;
+  asset_decimals?: number;
+  asset_contract?: string | null;
 };
 
 export class ApiRequestError extends Error {
@@ -127,6 +130,20 @@ async function ensureInvestigation(): Promise<string> {
     body: JSON.stringify({ name: "Wallet flow investigation" }),
   });
   return created.id;
+}
+
+export async function listTrackedWallets(): Promise<TrackedAddress[]> {
+  const investigations = await requestJson<Investigation[]>(
+    "/api/v1/investigations",
+  );
+  const addresses = await Promise.all(
+    investigations.map((investigation) =>
+      requestJson<TrackedAddress[]>(
+        `/api/v1/investigations/${investigation.id}/addresses`,
+      ),
+    ),
+  );
+  return addresses.flat();
 }
 
 export async function trackWallet(input: {
