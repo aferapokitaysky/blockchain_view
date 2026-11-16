@@ -12,6 +12,7 @@ pub mod error;
 pub mod evm_sync;
 pub mod health;
 pub mod investigations;
+pub mod networks;
 pub mod risk_signals;
 pub mod sanctions;
 pub mod sync_worker;
@@ -36,6 +37,7 @@ pub fn app(state: ApiState) -> Router {
     Router::new()
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
+        .route("/api/v1/networks", get(networks::list))
         .route(
             "/api/v1/investigations",
             get(investigations::list).post(investigations::create),

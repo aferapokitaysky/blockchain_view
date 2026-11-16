@@ -29,6 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let http_client = reqwest::Client::builder()
         .timeout(Duration::from_secs(12))
+        .redirect(reqwest::redirect::Policy::none())
         .user_agent("Tracefold/0.1 (+https://github.com/aferapokitaysky/blockchain_view)")
         .build()?;
     let bitcoin_esplora_url = std::env::var("BITCOIN_ESPLORA_URL")
