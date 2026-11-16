@@ -190,4 +190,38 @@ describe("investigation API client", () => {
     );
     await expect(listWalletHistory(evmAddress)).resolves.toEqual([transfer]);
   });
+
+  it("caps parallel address requests and reports history read errors accurately", async () => {
+    const investigations = Array.from({ length: 9 }, (_, index) => ({
+      ...investigation,
+      id: `investigation-${index}`,
+    }));
+    let activeRequests = 0;
+    let maximumActiveRequests = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/api/v1/investigations")) {
+        return jsonResponse(investigations);
+      }
+      activeRequests += 1;
+      maximumActiveRequests = Math.max(maximumActiveRequests, activeRequests);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      activeRequests -= 1;
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listTrackedWallets()).resolves.toEqual([]);
+    expect(maximumActiveRequests).toBe(4);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(jsonResponse({}, 500)),
+    );
+    await expect(
+      listWalletHistory({ ...trackedAddress, network: "bitcoin" }),
+    ).rejects.toMatchObject({
+      message: "Could not load saved wallet history. Please try again.",
+      status: 500,
+    });
+  });
 });
