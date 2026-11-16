@@ -5,9 +5,9 @@
 The repository contains a React, TypeScript, Vite, and Tailwind frontend plus a local Rust/Axum API.
 
 - The wallet form detects Bitcoin address syntax, asks the user to choose among ambiguous EVM networks, and saves investigations and tracked addresses through the local API.
-- The overview graph, balances, node labels, and risk panel still use static demo data. The recent-transactions table reads saved wallet observations and shows their provider, network, amount, status, and time. The saved-wallet section has a separate on-demand transfer-links view built from persisted EVM sender/recipient fields; it can explore directed paths up to three hops and marks counterparties that are not tracked. Paths connect separately observed events and do not establish that the same asset or funds moved across every hop. Bitcoin address-level input/output observations do not identify counterparties and are excluded from this graph.
+- The overview graph, balances, and node labels still use static demo data. The recent-transactions table reads persisted observations for saved wallets, with provider, tracked address, amount, status, and time. The risk panel loads analyst-entered signals for the selected saved wallet and shows the versioned provisional score with contribution details. The saved-wallet section has a separate on-demand transfer-links view built from persisted EVM sender/recipient fields; it explores directed paths up to three hops and marks untracked counterparties. Each hop is a separately observed event; a path does not establish continuous movement of the same funds. Bitcoin address-level input/output observations do not identify counterparties and are excluded from this graph.
 - PostgreSQL is the persistent store. Migrations create `investigations`, `tracked_addresses`, `risk_signals`, and `observed_transfers`.
-- Redis is connected to the API readiness check and stores the continuous history sync queue for the optional worker.
+- Redis is connected to the API readiness check and stores the history sync queue consumed by `sync-worker`.
 - The unauthenticated API is intended for local development only.
 
 ## API and storage flow
@@ -25,19 +25,19 @@ The API creates and lists investigations and tracked addresses. A manual `POST` 
 
 For each transaction, records preserve the configured Esplora host, observation time, transaction hash, confirmation state, block metadata, and address-level input/output totals. `spent_amount` is the value in inputs attributed to the tracked address; `received_amount` is the value of outputs to it. Amounts are stored as integer satoshis and serialized as strings to avoid precision loss. These are independent input/output totals, not a net balance change.
 
-The risk-signal API stores analyst-entered evidence scoped to an investigation and tracked address. Each operation verifies both path IDs against the same address record. Signals retain their key, category, severity, source name and reference, observation time, structured details, and creation time. Request bodies are limited to 16 KiB and `details` to 8 KiB. These records are not automatically sourced or verified and do not change the frontend's provisional score.
+The risk-signal API stores analyst-entered evidence scoped to an investigation and tracked address. Each operation verifies both path IDs against the same address record. Signals retain their key, category, severity, source name and reference, observation time, structured details, and creation time. Request bodies are limited to 16 KiB and `details` to 8 KiB. These records are not automatically sourced or verified. The frontend's provisional score uses the selected wallet's records; see the [versioned calculation and limitations](risk-model.md).
 
-OFAC SDN screening uses an XML snapshot imported into PostgreSQL by a separate command. The query endpoint returns exact-address matches, snapshot publication/import metadata, or an explicit unsupported/not-imported status. Bitcoin maps to OFAC currency `XBT`; Ethereum maps to `ETH`. Base and Arbitrum return `network_not_covered`. Results are not automatically converted into analyst signals or the demo score. See [OFAC screening setup](ofac-screening.md).
+OFAC SDN screening uses an XML snapshot imported into PostgreSQL by a separate command. The query endpoint returns exact-address matches, snapshot publication/import metadata, or an explicit unsupported/not-imported status. Bitcoin maps to OFAC currency `XBT`; Ethereum maps to `ETH`. Base and Arbitrum return `network_not_covered`. The UI includes an exact match as direct critical evidence after an explicit check; a non-match does not lower the score. See [OFAC screening setup](ofac-screening.md).
 
-The optional worker scans tracked addresses every 30 seconds in batches, enqueues deduplicated jobs in a bounded Redis Stream, and runs the same provider-backed sync code as the manual endpoint. See [continuous sync](continuous-sync.md).
+The Compose worker scans tracked addresses every 30 seconds in batches, enqueues deduplicated jobs in a bounded Redis Stream, and runs the same provider-backed sync code as the manual endpoint. See [continuous sync](continuous-sync.md).
 
 ## Provider scope and limits
 
-- Bitcoin and selected EVM history can be fetched on demand and by the optional scheduled worker.
+- Bitcoin and selected EVM history can be fetched on demand and by the scheduled worker.
 - Sync requests the initial Esplora history page, which may include unconfirmed mempool entries, then follows confirmed history for at most 20 pages total. This is up to 500 confirmed transactions, plus any mempool entries in the initial response.
 - The transfers endpoint returns at most 500 recent stored records. A sync can fetch more than that when the first page includes mempool entries, so the read endpoint is a bounded recent view.
 - Bitcoin history sync uses Esplora. EVM history uses Blockscout for Ethereum (1), Base (8453), and Arbitrum One (42161), fetching normal native transactions, successful internal native transfers, and ERC-20 events. Each stream is capped at 10 pages of 50 rows; `may_have_more_history` reports when a provider cursor remains at the cap. Both manual requests and the background worker use these bounds. This is not a complete index or identity attribution; other EVM networks and token standards are excluded.
-- The API supports create, list, read, replace, and delete operations for analyst-entered signals. Exact-address screening uses a locally imported OFAC SDN snapshot for Bitcoin and Ethereum. There is no background refresh or indirect-exposure screening; the snapshot publication date is returned to make its age visible. Results do not alter the demo exposure score.
+- The API supports create, list, read, replace, and delete operations for analyst-entered signals. Exact-address screening uses a locally imported OFAC SDN snapshot for Bitcoin and Ethereum. There is no background refresh or indirect-exposure screening; the snapshot publication date is returned to make its age visible. An exact match contributes direct critical evidence after an explicit check; a non-match does not lower the score.
 
 ## Network identity and address handling
 

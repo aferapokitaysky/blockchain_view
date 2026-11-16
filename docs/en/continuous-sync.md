@@ -1,6 +1,6 @@
 # Continuous wallet history sync
 
-The optional `sync-worker` Compose service periodically refreshes every tracked address through the existing Esplora and Blockscout adapters. The API remains available if the worker is stopped; manual sync endpoints continue to work.
+`docker compose up` starts the `sync-worker` service, which periodically refreshes every tracked address through the existing Esplora and Blockscout adapters. Stop it with `docker compose stop sync-worker` to disable background reads; the API and manual sync endpoints remain available.
 
 ```bash
 docker compose up --build

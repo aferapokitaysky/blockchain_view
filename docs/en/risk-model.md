@@ -1,12 +1,20 @@
 # Risk model
 
-## Current demonstration
+## Current implementation
 
-The UI currently computes a small illustrative exposure index from bundled sample signals. The implementation weights signal severity, category, and hop distance, then caps the sum at 100. The displayed value is **not** a calibrated probability, a finding that funds are illicit, or a compliance decision. The sample evidence is synthetic and is not returned by a provider.
+The UI loads analyst-entered signals for the selected saved address and can add exact OFAC SDN matches after an explicit screening request. The deterministic `0.1.0` model weights signal severity, category, and hop distance, caps the sum at 100, and displays each contribution. The displayed value is **not** a calibrated probability, a finding that funds are illicit, or a compliance decision.
 
-The API can separately store analyst-entered signals with source names, references, observation timestamps, and structured details. These records are not automatically verified, do not populate the bundled UI sample, and do not affect the current score.
+The API stores analyst-entered signals with source names, references, observation timestamps, and structured details. They are not automatically verified. Until evidence is explicitly entered or an OFAC exact match is returned, the score does not include it.
 
-Freshness, source reliability, and independent corroboration are displayed as source/time fields in the demo model but do not yet affect the score. The production design must not silently treat those fields as equivalent.
+Freshness, source reliability, and independent corroboration remain visible context and do not affect the score. The model does not infer confidence from missing metadata. An OFAC `no_exact_match`, unavailable snapshot, or unsupported network adds no points and does not reduce other evidence.
+
+## Current calculation (`0.1.0`)
+
+Severity weights are critical 80, high 48, medium 24, low 8, and informational 0. Direct evidence uses a distance factor of 1; hop `h > 0` uses `1 / (h + 1)` (one hop is one half, two hops one third). Category factors are sanctions 1, behavior 0.7, exposure 0.55, and other 0. Each row shows its base severity, distance, category, and point contribution. Contributions are summed, capped at 100, and rounded for display. An exact OFAC address match is represented as direct critical sanctions evidence, only after the user runs the local snapshot check. Analyst-entered `details.hops` or `details.hop_count` supplies path distance; malformed values fall back to direct evidence because the API record itself is scoped to the wallet. Do not enter indirect evidence without a source-backed path.
+
+The displayed bands are low below 20, guarded from 20, elevated from 45, and high from 75. They are review priorities, not calibrated probabilities.
+
+The panel is address-scoped, reports the model version, and describes an empty signal set as “no evidence recorded,” not a clean result. Source timestamps and references are displayed but not used in the calculation. Stale evidence is not down-weighted yet.
 
 ## Intended evidence model
 

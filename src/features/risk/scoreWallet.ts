@@ -1,52 +1,153 @@
+import type {
+  AddressScreeningResult,
+  StoredRiskSignal,
+} from "../investigations/api";
+
+export const RISK_MODEL_VERSION = "0.1.0";
+
 export type RiskSignal = {
   id: string;
   title: string;
   detail: string;
-  category: "sanctions" | "exposure" | "behavior";
-  severity: "critical" | "high" | "medium" | "low";
+  category: "sanctions" | "exposure" | "behavior" | "other";
+  severity: "critical" | "high" | "medium" | "low" | "informational";
   hops: number;
   source: string;
+  sourceReference: string | null;
   observedAt: string;
+};
+
+export type ScoredRiskSignal = {
+  signal: RiskSignal;
+  baseWeight: number;
+  distanceFactor: number;
+  categoryFactor: number;
+  contribution: number;
 };
 
 export type RiskAssessment = {
   score: number;
   level: "low" | "guarded" | "elevated" | "high";
-  signals: RiskSignal[];
+  modelVersion: string;
+  contributions: ScoredRiskSignal[];
   disclaimer: string;
 };
 
-/** Возвращает вклад наблюдения в общий индекс риска.
- * Коэффициенты временные и требуют калибровки на проверенных кейсах.
- */
-function weightSignal(signal: RiskSignal): number {
-  // TODO: Настроить коэффициенты после выбора источников и политики проверки.
-  const distanceFactor = signal.hops === 0 ? 1 : 1 / (signal.hops + 1);
-  const categoryFactor =
-    signal.category === "sanctions"
-      ? 1
-      : signal.category === "behavior"
-        ? 0.7
-        : 0.55;
-  return SIGNAL_WEIGHTS[signal.severity] * distanceFactor * categoryFactor;
-}
-
-const SIGNAL_WEIGHTS: Record<RiskSignal["severity"], number> = {
+const severityWeights: Record<RiskSignal["severity"], number> = {
   critical: 80,
   high: 48,
   medium: 24,
   low: 8,
+  informational: 0,
 };
 
-/** Рассчитывает объяснимый индекс экспозиции по атрибутированным сигналам.
- * Это приоритет для проверки, а не вероятность или решение о соблюдении требований.
- */
-export function scoreWallet(signals: RiskSignal[]): RiskAssessment {
-  const score = Math.min(
-    100,
-    signals.reduce((total, signal) => total + weightSignal(signal), 0),
-  );
+function categoryWeight(category: RiskSignal["category"]): number {
+  switch (category) {
+    case "sanctions":
+      return 1;
+    case "behavior":
+      return 0.7;
+    case "exposure":
+      return 0.55;
+    case "other":
+      return 0;
+  }
+}
 
+function parseHopCount(details: Record<string, unknown>): number {
+  const raw = details.hops ?? details.hop_count;
+  if (typeof raw !== "number" || !Number.isInteger(raw)) return 0;
+  return Math.max(0, Math.min(raw, 10));
+}
+
+function describeDetails(details: Record<string, unknown>): string {
+  for (const key of ["summary", "description", "note"]) {
+    const value = details[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "Analyst-provided evidence. Review the source before relying on it.";
+}
+
+function humanizeSignalKey(signalKey: string): string {
+  return signalKey
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+export function mapStoredRiskSignal(signal: StoredRiskSignal): RiskSignal {
+  return {
+    id: signal.id,
+    title: humanizeSignalKey(signal.signal_key),
+    detail: describeDetails(signal.details),
+    category: signal.category,
+    severity: signal.severity,
+    hops: parseHopCount(signal.details),
+    source: signal.source_name,
+    sourceReference: signal.source_reference,
+    observedAt: signal.observed_at,
+  };
+}
+
+export function mapOfacMatches(
+  screening: AddressScreeningResult | null,
+): RiskSignal[] {
+  if (!screening || screening.status !== "exact_match" || !screening.source) {
+    return [];
+  }
+  const source = screening.source;
+  return screening.matches.map((match) => ({
+    id: `ofac:${match.entity_uid}:${match.currency_code}:${match.address.toLowerCase()}`,
+    title: match.entity_name,
+    detail: [
+      `Exact ${match.currency_code} address match in OFAC SDN.`,
+      match.programs.length > 0
+        ? `Programs: ${match.programs.join(", ")}.`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    category: "sanctions",
+    severity: "critical",
+    hops: 0,
+    source: `${source.source_name} · published ${source.published_at}`,
+    sourceReference: null,
+    observedAt: source.imported_at,
+  }));
+}
+
+function scoreSignal(signal: RiskSignal): ScoredRiskSignal {
+  const hops = Number.isInteger(signal.hops)
+    ? Math.min(10, Math.max(0, signal.hops))
+    : 0;
+  const distanceFactor = hops === 0 ? 1 : 1 / (hops + 1);
+  const categoryFactor = categoryWeight(signal.category);
+  const baseWeight = severityWeights[signal.severity];
+  return {
+    signal,
+    baseWeight,
+    distanceFactor,
+    categoryFactor,
+    contribution:
+      Math.round(baseWeight * distanceFactor * categoryFactor * 100) / 100,
+  };
+}
+
+/** Рассчитывает приоритет проверки, а не вероятность нарушения. */
+export function scoreWallet(signals: RiskSignal[]): RiskAssessment {
+  const contributions = signals
+    .map(scoreSignal)
+    .sort(
+      (left, right) =>
+        right.contribution - left.contribution ||
+        left.signal.id.localeCompare(right.signal.id),
+    );
+  const rawScore = contributions.reduce(
+    (total, contribution) => total + contribution.contribution,
+    0,
+  );
+  const score = Math.round(Math.min(100, rawScore));
   const level =
     score >= 75
       ? "high"
@@ -55,47 +156,23 @@ export function scoreWallet(signals: RiskSignal[]): RiskAssessment {
         : score >= 20
           ? "guarded"
           : "low";
+
   return {
-    score: Math.round(score),
+    score,
     level,
-    signals,
+    modelVersion: RISK_MODEL_VERSION,
+    contributions,
     disclaimer:
-      "Risk exposure index. Signals require analyst review and do not establish wrongdoing.",
+      "Review-priority index only. Evidence is not independently verified and does not establish wrongdoing or legal status.",
   };
 }
 
-export const DEMO_RISK_SIGNALS: RiskSignal[] = [
-  {
-    id: "rapid-pass",
-    title: "Rapid pass-through",
-    detail: "82% of received value moved again within 14 minutes.",
-    category: "behavior",
-    severity: "medium",
-    hops: 0,
-    source: "Observed transaction history",
-    observedAt: "2026-11-16T09:32:00Z",
-  },
-  {
-    id: "indirect-service",
-    title: "Indirect service exposure",
-    detail:
-      "One counterparty is labeled as a high-risk service by a demo source.",
-    category: "exposure",
-    severity: "high",
-    hops: 1,
-    source: "Demo attribution dataset",
-    observedAt: "2026-11-15T18:12:00Z",
-  },
-  {
-    id: "fan-out",
-    title: "Unusual fan-out",
-    detail: "Funds split across 11 new addresses in a short window.",
-    category: "behavior",
-    severity: "medium",
-    hops: 0,
-    source: "Observed transaction history",
-    observedAt: "2026-11-14T14:06:00Z",
-  },
-];
-
-export const DEMO_WALLET_ASSESSMENT = scoreWallet(DEMO_RISK_SIGNALS);
+export function buildWalletAssessment(
+  storedSignals: StoredRiskSignal[],
+  screening: AddressScreeningResult | null,
+): RiskAssessment {
+  return scoreWallet([
+    ...storedSignals.map(mapStoredRiskSignal),
+    ...mapOfacMatches(screening),
+  ]);
+}

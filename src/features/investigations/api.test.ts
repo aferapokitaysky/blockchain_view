@@ -3,6 +3,7 @@ import {
   checkApiHealth,
   listTrackedWallets,
   listWalletHistory,
+  listWalletRiskSignals,
   screenWalletAddress,
   syncWalletHistory,
   trackWallet,
@@ -209,6 +210,33 @@ describe("investigation API client", () => {
     ).resolves.toEqual(result);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8080/api/v1/screening/address?network=ethereum&address=0x0123456789abcdef0123456789abcdef01234567",
+      expect.objectContaining({ headers: {} }),
+    );
+  });
+
+  it("loads risk evidence from the selected address scope", async () => {
+    const signals = [
+      {
+        id: "signal-1",
+        tracked_address_id: trackedAddress.id,
+        signal_key: "rapid_pass_through",
+        category: "behavior",
+        severity: "medium",
+        source_name: "Analyst review",
+        source_reference: null,
+        observed_at: "2026-11-16T10:00:00Z",
+        details: { summary: "Repeated rapid transfers" },
+        created_at: "2026-11-16T10:05:00Z",
+      },
+    ];
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(signals));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      listWalletRiskSignals({ ...trackedAddress, network: "ethereum" }),
+    ).resolves.toEqual(signals);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://127.0.0.1:8080/api/v1/investigations/${investigation.id}/addresses/${trackedAddress.id}/risk-signals`,
       expect.objectContaining({ headers: {} }),
     );
   });

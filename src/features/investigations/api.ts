@@ -82,6 +82,19 @@ export type AddressScreeningResult = {
   explanation: string;
 };
 
+export type StoredRiskSignal = {
+  id: string;
+  tracked_address_id: string;
+  signal_key: string;
+  category: "sanctions" | "exposure" | "behavior" | "other";
+  severity: "critical" | "high" | "medium" | "low" | "informational";
+  source_name: string;
+  source_reference: string | null;
+  observed_at: string;
+  details: Record<string, unknown>;
+  created_at: string;
+};
+
 export class ApiRequestError extends Error {
   readonly status: number;
 
@@ -256,6 +269,17 @@ export async function listWalletHistory(
     undefined,
     REQUEST_TIMEOUT_MS,
     "Could not load saved wallet history. Please try again.",
+  );
+}
+
+export async function listWalletRiskSignals(
+  address: TrackedAddress,
+): Promise<StoredRiskSignal[]> {
+  return requestJson<StoredRiskSignal[]>(
+    `/api/v1/investigations/${address.investigation_id}/addresses/${address.id}/risk-signals`,
+    undefined,
+    REQUEST_TIMEOUT_MS,
+    "Could not load wallet risk signals. Please try again.",
   );
 }
 
