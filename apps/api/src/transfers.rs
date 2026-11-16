@@ -84,6 +84,15 @@ pub(crate) async fn sync_address(
     State(state): State<ApiState>,
     Path((investigation_id, address_id)): Path<(Uuid, Uuid)>,
 ) -> Result<(StatusCode, Json<SyncResult>), ApiError> {
+    let result = sync_tracked_address(&state, investigation_id, address_id).await?;
+    Ok((StatusCode::OK, Json(result)))
+}
+
+pub(crate) async fn sync_tracked_address(
+    state: &ApiState,
+    investigation_id: Uuid,
+    address_id: Uuid,
+) -> Result<SyncResult, ApiError> {
     let address = sqlx::query_as::<_, AddressRow>(
         "SELECT network, address FROM tracked_addresses WHERE id = $1 AND investigation_id = $2",
     )
@@ -95,16 +104,16 @@ pub(crate) async fn sync_address(
 
     if address.network != "bitcoin" {
         let result = crate::evm_sync::sync_evm_address(
-            &state,
+            state,
             address_id,
             &address.network,
             &address.address,
         )
         .await?;
-        return Ok((StatusCode::OK, Json(result)));
+        return Ok(result);
     }
 
-    let transactions = fetch_history(&state, &address.address).await?;
+    let transactions = fetch_history(state, &address.address).await?;
     let provider = provider_name(&state.bitcoin_esplora_url);
     let source_host = provider_host(&state.bitcoin_esplora_url);
     let observed_at = Utc::now();
@@ -129,22 +138,19 @@ pub(crate) async fn sync_address(
         .bind(&provider)
         .bind(&source_host)
         .bind(observed_at)
-        .execute(&state.database)
+            .execute(&state.database)
         .await?;
         saved += result.rows_affected() as usize;
     }
 
-    Ok((
-        StatusCode::OK,
-        Json(SyncResult {
-            provider,
-            fetched: transactions.items.len(),
-            saved,
-            pages: transactions.pages,
-            may_have_more_history: transactions.may_have_more,
-            observed_at,
-        }),
-    ))
+    Ok(SyncResult {
+        provider,
+        fetched: transactions.items.len(),
+        saved,
+        pages: transactions.pages,
+        may_have_more_history: transactions.may_have_more,
+        observed_at,
+    })
 }
 
 fn provider_name(base_url: &str) -> String {
