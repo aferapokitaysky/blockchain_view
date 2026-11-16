@@ -45,6 +45,7 @@ Vite виведе локальну адресу застосунку. Зараз
 ```sh
 npm run lint
 npm run format:check
+npm run test
 npm run build
 ```
 
