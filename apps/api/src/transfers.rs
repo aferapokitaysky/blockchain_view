@@ -10,7 +10,6 @@ use uuid::Uuid;
 
 use crate::{ApiState, error::ApiError};
 
-const PROVIDER: &str = "Blockstream Esplora";
 const MAX_CONFIRMED_PAGES: usize = 20;
 
 #[derive(Debug, Deserialize)]
@@ -43,7 +42,7 @@ struct EsploraStatus {
 
 #[derive(Debug, Serialize)]
 pub struct SyncResult {
-    provider: &'static str,
+    provider: String,
     fetched: usize,
     saved: usize,
     pages: usize,
@@ -92,6 +91,7 @@ pub(crate) async fn sync_address(
     }
 
     let transactions = fetch_history(&state, &address.address).await?;
+    let provider = provider_name(&state.bitcoin_esplora_url);
     let observed_at = Utc::now();
     let mut saved = 0;
     for transaction in &transactions.items {
@@ -111,7 +111,7 @@ pub(crate) async fn sync_address(
         .bind(transfer.block_height)
         .bind(transfer.block_time)
         .bind(transfer.confirmed)
-        .bind(PROVIDER)
+        .bind(&provider)
         .bind(observed_at)
         .execute(&state.database)
         .await?;
@@ -121,7 +121,7 @@ pub(crate) async fn sync_address(
     Ok((
         StatusCode::OK,
         Json(SyncResult {
-            provider: PROVIDER,
+            provider,
             fetched: transactions.items.len(),
             saved,
             pages: transactions.pages,
@@ -129,6 +129,14 @@ pub(crate) async fn sync_address(
             observed_at,
         }),
     ))
+}
+
+fn provider_name(base_url: &str) -> String {
+    reqwest::Url::parse(base_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .map(|host| format!("Esplora ({host})"))
+        .unwrap_or_else(|| "Esplora endpoint".into())
 }
 
 pub(crate) async fn list_address_transfers(
@@ -319,5 +327,14 @@ mod tests {
             status: EsploraStatus::default(),
         };
         assert!(normalize_transfer(&tx, "bc1qexample").is_none());
+    }
+
+    #[test]
+    fn records_the_configured_provider_host_as_source() {
+        assert_eq!(
+            super::provider_name("https://blockstream.info/api"),
+            "Esplora (blockstream.info)"
+        );
+        assert_eq!(super::provider_name("not a URL"), "Esplora endpoint");
     }
 }
