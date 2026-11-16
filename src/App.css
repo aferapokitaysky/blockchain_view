@@ -204,10 +204,13 @@
   border: 1px solid color-mix(in srgb, var(--network) 28%, transparent);
   border-radius: 50%;
   color: var(--network);
-  font:
-    500 11px ui-monospace,
-    monospace;
   background: color-mix(in srgb, var(--network) 9%, transparent);
+}
+.network-mark svg {
+  width: 13px;
+  height: 13px;
+  overflow: visible;
+  animation: network-mark-drift 5s ease-in-out infinite;
 }
 .sidebar-spacer {
   flex: 1;
@@ -795,10 +798,8 @@
   fill: #1c3c30;
 }
 .node-mark {
-  font:
-    13px ui-monospace,
-    monospace;
-  fill: var(--node-color, #70d8aa);
+  color: var(--node-color, #70d8aa);
+  animation: network-mark-drift 5s ease-in-out infinite;
 }
 .node-name {
   font:
@@ -1616,6 +1617,17 @@ tbody tr:hover {
   }
   50% {
     opacity: 0.48;
+  }
+}
+@keyframes network-mark-drift {
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
   }
 }
 @media (max-width: 1180px) {
