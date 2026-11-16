@@ -1,47 +1,46 @@
 # Architecture
 
-## Current state
+## Current implementation
 
-The repository currently contains a React, TypeScript, Vite, and Tailwind interface prototype. Wallets, graph edges, balances, transfer rows, network labels, and risk signals are static illustrative data in the frontend. There is no API connection, blockchain ingestion, identity attribution, or live provider integration yet.
+The repository contains a React, TypeScript, Vite, and Tailwind frontend plus a local Rust/Axum API.
 
-## Target shape
+- The wallet form detects Bitcoin address syntax, asks the user to choose among ambiguous EVM networks, and saves investigations and tracked addresses through the local API.
+- The graph, balances, node labels, transaction table, and risk panel still use static demo data. The UI does not render Esplora sync results yet.
+- PostgreSQL is the persistent store. Migrations create `investigations`, `tracked_addresses`, `risk_signals`, and `observed_transfers`.
+- Redis is connected to the API readiness check. It is not currently used for cache entries or background jobs.
+- The unauthenticated API is intended for local development only.
+
+## API and storage flow
 
 ```text
-Chain RPC / indexed data / licensed intelligence providers
-                       |
-                 source adapters
-                       |
-          Rust API + background workers
-                /              \
-      PostgreSQL              Redis
-   evidence and state   cache and coordination
-                \              /
-           React / TypeScript UI
+Wallet form / local API request
+               |
+          Rust + Axum
+        /      |       \
+ PostgreSQL  Redis   Blockstream Esplora
+   records   readiness  on-demand Bitcoin history
 ```
 
-- **React and TypeScript** render investigations and keep user interactions responsive.
-- **Rust and Axum** are the planned API and processing layer. Parsing, normalization, and graph queries should live behind explicit service boundaries.
-- **PostgreSQL** is the source of truth for investigations, wallets, transfers, source observations, and analyst annotations. Derived records should retain provenance and timestamps.
-- **Redis** is intended for expiring cache entries, rate-limit coordination, and background-job coordination. It must not be the only store for evidence.
-- **Source adapters** isolate chain-specific APIs and third-party datasets. Each adapter must expose coverage, last successful synchronization, licensing notes, and provider errors.
+The API creates and lists investigations and tracked addresses. A manual `POST` sync request retrieves Bitcoin address history from the configured Esplora-compatible service, normalizes address activity, and upserts observed transfers in PostgreSQL. A separate `GET` returns up to 500 most recent saved transfer rows for that tracked address.
 
-## Address and network identity
+For each transaction, records preserve the provider name (`Blockstream Esplora`), observation time, transaction hash, confirmation state, block metadata, and address-level input/output totals. `spent_amount` is the value in inputs attributed to the tracked address; `received_amount` is the value of outputs to it. Amounts are stored as integer satoshis and serialized as strings to avoid precision loss. These are independent input/output totals, not a net balance change.
 
-An address string alone is not a reliable cross-chain identity. Store a network identifier with every address and transaction. EVM addresses are syntactically compatible across many chains, so format recognition can return an EVM-family candidate but cannot reliably select Ethereum, Base, Arbitrum, or another EVM network. Let users confirm or select the chain unless an authoritative context resolves it.
+## Provider scope and limits
 
-Normalize addresses for comparisons according to the chain. Preserve the original displayed form and avoid merging entities solely because their address strings match.
+- Bitcoin history is fetched only when the sync endpoint is called. There is no scheduled polling or continuous monitoring.
+- Sync requests the initial Esplora history page, which may include unconfirmed mempool entries, then follows confirmed history for at most 20 pages total. This is up to 500 confirmed transactions, plus any mempool entries in the initial response.
+- The transfers endpoint returns at most 500 recent stored records. A sync can fetch more than that when the first page includes mempool entries, so the read endpoint is a bounded recent view.
+- Bitcoin is the only network with transaction-history sync. EVM history sync is unsupported. Esplora data provides transaction observations, not identity attribution or complete address coverage.
+- The `risk_signals` table is a storage schema only; risk-signal endpoints and provider integrations are not implemented.
 
-## Evidence and graph model
+## Network identity and address handling
 
-A graph edge should point to a chain transaction and preserve direction, asset, amount, block or event time, ingestion time, and source. Labels and entity clusters should be separately stored claims with author, source, confidence, and observation time. Never rewrite an observed transfer to make it look like an analyst conclusion.
-
-Queries should be bounded by network, time window, hop count, and result size. Paginate high-volume transaction lists and expose when a result is partial or stale.
+An address string alone is not a reliable cross-chain identity. Every tracked address and transaction must include a network identifier. Bitcoin addresses are checked against Bitcoin mainnet format. EVM-format addresses may be valid on several networks, so the UI asks the user to select the intended chain; format alone cannot distinguish Ethereum, Base, and Arbitrum. The API normalizes EVM hex addresses but does not infer their network.
 
 ## Reliability and safety
 
-- Validate request payloads and enforce per-user investigation access in the API.
-- Use timeouts and bounded retries for external providers; respect provider rate limits.
-- Keep credentials server-side and never log them.
-- Make ingestion idempotent using chain-specific transaction/event identifiers.
-- Treat cached data as disposable and surface its age.
-- Keep demo content visibly separate from provider-backed evidence.
+- Validate request payloads and keep investigation/address relationships scoped in each query.
+- Apply bounded provider request timeouts and idempotent upserts by tracked address and transaction hash.
+- Surface provider and observation time so analysts can inspect provenance and freshness.
+- Keep the API bound to loopback for local use. It has no authentication and must not be exposed to an untrusted network.
+- Keep frontend demo data visibly separate from provider-backed records until the UI is connected to the sync endpoint.
