@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "hash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+      "from": { "hash": "0xcccccccccccccccccccccccccccccccccccccccc" },
+      "to": { "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      "value": "42",
+      "status": "ok",
+      "block_number": 198,
+      "timestamp": "2026-11-15T10:20:30Z"
+    }
+  ],
+  "next_page_params": null
+}
