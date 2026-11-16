@@ -13,6 +13,7 @@ pub mod evm_sync;
 pub mod health;
 pub mod investigations;
 pub mod risk_signals;
+pub mod sanctions;
 pub mod transfers;
 
 pub type ApiState = health::HealthState;
@@ -50,6 +51,7 @@ pub fn app(state: ApiState) -> Router {
             "/api/v1/investigations/{investigation_id}/addresses/{address_id}/transfers",
             get(transfers::list_address_transfers),
         )
+        .route("/api/v1/screening/address", get(sanctions::screen_address))
         .merge(risk_signal_routes)
         .with_state(state)
         .layer(
