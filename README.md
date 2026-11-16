@@ -27,7 +27,7 @@ The interface prototype includes a wallet-flow graph, network filters, a recent-
 - **Persistent storage:** PostgreSQL, with an initial migration for investigations, tracked addresses, and risk signals.
 - **Cache and coordination:** Redis, checked by the API readiness endpoint.
 
-The API supports creating and listing investigations, adding and listing tracked addresses, and manually syncing Bitcoin address history. The frontend still uses bundled demo data and is not connected to the API. The API has no authentication and is intended for local development only. There is no continuous sync, EVM sync, sanctions feed, or commercial screening provider. The `risk_signals` table exists, but risk-signal API endpoints are not implemented.
+The API supports creating and listing investigations, adding and listing tracked addresses, and manually syncing Bitcoin address history. The wallet form uses the API to save addresses and offers an on-demand sync action for Bitcoin. The graph, balances, risk panel, and transaction table remain demo data and do not render saved sync results. The API has no authentication and is intended for local development only. There is no continuous sync, EVM sync, sanctions feed, or commercial screening provider. The `risk_signals` table exists, but risk-signal API endpoints are not implemented.
 
 - `GET` / `POST` `/api/v1/investigations`
 - `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses`
