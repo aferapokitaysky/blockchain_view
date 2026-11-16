@@ -45,6 +45,7 @@ The app runs at the local URL printed by Vite. It currently uses bundled demo da
 ```sh
 npm run lint
 npm run format:check
+npm run test
 npm run build
 ```
 
