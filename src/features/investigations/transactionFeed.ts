@@ -32,6 +32,29 @@ export type TransactionRiskContext = {
   screening: AddressScreeningResult | null;
 };
 
+export type TransferRiskPlaceholder = {
+  label:
+    | "Loading evidence"
+    | "Evidence unavailable"
+    | "Select wallet for score"
+    | "No linked evidence";
+  error: string | null;
+};
+
+export function getTransferRiskPlaceholder(
+  trackedAddressId: string,
+  selectedAddressId: string | null,
+  loading: boolean,
+  error: string,
+): TransferRiskPlaceholder {
+  if (selectedAddressId !== trackedAddressId) {
+    return { label: "Select wallet for score", error: null };
+  }
+  if (loading) return { label: "Loading evidence", error: null };
+  if (error) return { label: "Evidence unavailable", error };
+  return { label: "No linked evidence", error: null };
+}
+
 const NETWORK_NAMES: Record<string, TransactionFeedItem["network"]> = {
   ethereum: "Ethereum",
   bitcoin: "Bitcoin",
