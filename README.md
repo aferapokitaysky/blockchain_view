@@ -2,7 +2,7 @@
 
 Open-source workspace for exploring how funds move between blockchain addresses.
 
-> **Project status: early prototype.** The overview graph, wallet labels, balances, and top transaction table still use illustrative demo data. The risk panel loads analyst-entered signals for the selected saved address and can include exact OFAC SDN matches after an explicit local snapshot check; its provisional score is not a legal conclusion or a complete compliance check. The saved-wallet panel loads Bitcoin and EVM observations from configured providers. Its separate transfer-links view uses exact EVM sender/recipient fields from saved history; it does not infer Bitcoin counterparties. History sync is manual, not continuous. EVM history support is limited to Ethereum, Base, and Arbitrum One.
+> **Project status: early prototype.** The overview graph, wallet labels, and balances remain illustrative demo data. The recent-transactions table reads persisted observations for saved wallets and stays empty until history is synced through a configured provider. The risk panel loads analyst-entered signals for the selected saved address and may include an exact OFAC SDN match after an explicit local snapshot check; its versioned score is provisional, not a legal conclusion or complete compliance check. Saved-wallet history sync is on demand, not continuous. The EVM graph uses exact saved sender/recipient fields and does not infer Bitcoin counterparties. EVM history support is limited to Ethereum, Base, and Arbitrum One.
 
 **Documentation:** [Русский](README.ru.md) · [Українська](README.uk.md) · [English](README.md)
 
@@ -10,7 +10,7 @@ Open-source workspace for exploring how funds move between blockchain addresses.
 
 Tracefold is being designed as an OSINT investigation tool. An analyst should be able to start from an address, follow transfers across supported networks, preserve the evidence behind each relationship, and review risk signals without treating an algorithmic score as proof.
 
-The interface prototype includes a demo overview graph and an evidence-based EVM transfer-links view, alongside network filters, a recent-transfer table, and a versioned, explainable assessment for the selected saved wallet.
+The interface prototype includes a demo overview graph and an evidence-based EVM transfer-links view, alongside network filters, a persisted-observation table, and a versioned, explainable assessment for the selected saved wallet.
 
 ## Product principles
 
@@ -27,7 +27,7 @@ The interface prototype includes a demo overview graph and an evidence-based EVM
 - **Persistent storage:** PostgreSQL, with an initial migration for investigations, tracked addresses, and risk signals.
 - **Cache and coordination:** Redis, checked by the API readiness endpoint.
 
-The API supports creating and listing investigations, adding and listing tracked addresses, manually syncing Bitcoin and selected EVM transaction history, investigation-scoped CRUD for analyst-entered risk signals, and exact-address screening against an imported OFAC SDN snapshot. The risk panel loads signals for the selected saved wallet and shows the versioned provisional score with per-signal contributions; an exact OFAC match contributes direct sanctions evidence only after an explicit check. A non-match never lowers the score. The wallet form saves addresses and offers on-demand sync; the history dialog shows saved observations and their source. The direct transfer-links view builds EVM connections from persisted sender/recipient fields and labels untracked counterparties. Bitcoin inputs and outputs do not identify counterparties, so they are excluded from that graph. The overview graph, balances, and top transaction table remain demo data. The API has no authentication and is intended for local development only. The OFAC snapshot is refreshed manually; no commercial screening provider is connected.
+The API supports creating and listing investigations, adding and listing tracked addresses, manually syncing Bitcoin and selected EVM transaction history, investigation-scoped CRUD for analyst-entered risk signals, and exact-address screening against an imported OFAC SDN snapshot. The recent-transactions table shows persisted observations. The risk panel loads signals for the selected saved wallet and shows the versioned provisional score with per-signal contributions; an exact OFAC match contributes direct sanctions evidence only after an explicit check, while a non-match never lowers the score. The direct transfer-links view builds EVM connections from persisted sender/recipient fields and labels untracked counterparties. Bitcoin inputs and outputs do not identify counterparties, so they are excluded from that graph. The overview graph and balances remain demo data. The API has no authentication and is intended for local development only. The OFAC snapshot is refreshed manually; no commercial screening provider is connected.
 
 - `GET` / `POST` `/api/v1/investigations`
 - `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses`
