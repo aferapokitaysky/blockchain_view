@@ -50,6 +50,7 @@ import {
   type ObservedTransfer,
   type TrackedAddress,
 } from "./features/investigations/api";
+import { formatBitcoinAmount } from "./features/investigations/formatBitcoinAmount";
 import "./App.css";
 
 type Network = "Ethereum" | "Bitcoin" | "Base" | "Arbitrum";
@@ -234,20 +235,6 @@ const networkMeta: Record<Network, { color: string }> = {
   Base: { color: "#5595ff" },
   Arbitrum: { color: "#64c8fa" },
 };
-
-function formatSatoshis(value: string): string {
-  try {
-    const satoshis = BigInt(value);
-    const whole = satoshis / 100_000_000n;
-    const fraction = (satoshis % 100_000_000n)
-      .toString()
-      .padStart(8, "0")
-      .replace(/0+$/, "");
-    return `${whole}${fraction ? `.${fraction}` : ""} BTC`;
-  } catch {
-    return `${value} sat`;
-  }
-}
 
 function NetworkShape({ network }: { network: Network }) {
   return (
@@ -1289,12 +1276,12 @@ function App() {
                     <div className="history-amounts">
                       {record.received_amount !== "0" && (
                         <span className="history-received">
-                          Received {formatSatoshis(record.received_amount)}
+                          Received {formatBitcoinAmount(record.received_amount)}
                         </span>
                       )}
                       {record.spent_amount !== "0" && (
                         <span className="history-spent">
-                          Spent {formatSatoshis(record.spent_amount)}
+                          Spent {formatBitcoinAmount(record.spent_amount)}
                         </span>
                       )}
                     </div>
