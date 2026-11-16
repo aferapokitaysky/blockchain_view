@@ -45,6 +45,7 @@ Vite выведет локальный адрес приложения. Сейч
 ```sh
 npm run lint
 npm run format:check
+npm run test
 npm run build
 ```
 
