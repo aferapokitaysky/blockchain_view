@@ -84,6 +84,50 @@ async fn investigation_and_address_routes_round_trip_through_postgres(pool: PgPo
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
+#[sqlx::test(migrations = "./migrations")]
+async fn network_constraint_accepts_legacy_and_valid_eip155_ids(pool: PgPool) {
+    let investigation_id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO investigations (name) VALUES ('Network constraint') RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("investigation should be inserted");
+
+    for network in ["ethereum", "bitcoin", "base", "arbitrum", "eip155:10"] {
+        sqlx::query("INSERT INTO tracked_addresses (investigation_id, network, address) VALUES ($1, $2, 'address')")
+            .bind(investigation_id)
+            .bind(network)
+            .execute(&pool)
+            .await
+            .unwrap_or_else(|error| panic!("network {network} should be accepted: {error}"));
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn network_constraint_rejects_malformed_or_unsupported_ids(pool: PgPool) {
+    let investigation_id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO investigations (name) VALUES ('Invalid network') RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("investigation should be inserted");
+
+    for network in [
+        "eip155:0",
+        "eip155:01",
+        "eip155:18446744073709551616",
+        "eip155:-1",
+        "polygon",
+    ] {
+        let result = sqlx::query("INSERT INTO tracked_addresses (investigation_id, network, address) VALUES ($1, $2, 'address')")
+            .bind(investigation_id)
+            .bind(network)
+            .execute(&pool)
+            .await;
+        assert!(result.is_err(), "network {network} should be rejected");
+    }
+}
+
 fn test_state(database: PgPool) -> ApiState {
     ApiState {
         database,
