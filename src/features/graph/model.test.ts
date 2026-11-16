@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildWalletFlowGraph } from "./model";
+import {
+  buildWalletFlowGraph,
+  findObservedPaths,
+  type FlowEdge,
+} from "./model";
 import type { WalletHistory } from "../investigations/api";
 
 const trackedAddress = {
@@ -54,6 +58,10 @@ describe("wallet flow graph", () => {
         to: "base:0x2222222222222222222222222222222222222222",
         asset: "USDC",
         amount: "1.25",
+        latestAt: "2026-11-16T10:00:00Z",
+        latestTimeKind: "block",
+        providers: ["Blockscout"],
+        sourceHosts: ["api.blockscout.com"],
       },
     ]);
   });
@@ -104,5 +112,60 @@ describe("wallet flow graph", () => {
       edges: [],
       truncated: false,
     });
+  });
+});
+
+function graphEdge(id: string, from: string, to: string): FlowEdge {
+  return {
+    id,
+    from,
+    to,
+    asset: "ETH",
+    transfers: 1,
+    amount: "1",
+    decimals: 18,
+    latestAt: "2026-11-16T10:00:00Z",
+    latestTimeKind: "block",
+    providers: ["Blockscout"],
+    sourceHosts: ["api.blockscout.com"],
+  };
+}
+
+describe("observed path traversal", () => {
+  const edges = [
+    graphEdge("ab", "a", "b"),
+    graphEdge("bc", "b", "c"),
+    graphEdge("ca", "c", "a"),
+    graphEdge("de", "d", "e"),
+  ];
+
+  it("follows sender-to-recipient direction only", () => {
+    const fromRecipient = findObservedPaths(edges.slice(0, 1), "b", 3);
+
+    expect(fromRecipient.depthByNode.has("a")).toBe(false);
+    expect(fromRecipient.depthByNode.has("c")).toBe(false);
+    expect(fromRecipient.pathEdgeIds.size).toBe(0);
+  });
+
+  it("stops revisiting nodes in cycles", () => {
+    const result = findObservedPaths(edges, "a", 3);
+
+    expect(result.depthByNode.get("a")).toBe(0);
+    expect(result.depthByNode.get("b")).toBe(1);
+    expect(result.depthByNode.get("c")).toBe(2);
+    expect(result.paths.map((path) => path.targetId)).toEqual(["b", "c"]);
+  });
+
+  it("respects the selected maximum depth", () => {
+    expect(findObservedPaths(edges, "a", 1).depthByNode.has("c")).toBe(false);
+    expect(findObservedPaths(edges, "a", 2).depthByNode.get("c")).toBe(2);
+  });
+
+  it("does not include disconnected nodes", () => {
+    const result = findObservedPaths(edges, "a", 3);
+
+    expect(result.depthByNode.has("d")).toBe(false);
+    expect(result.depthByNode.has("e")).toBe(false);
+    expect(result.pathEdgeIds.has("de")).toBe(false);
   });
 });

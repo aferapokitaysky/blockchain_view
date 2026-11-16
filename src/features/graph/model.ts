@@ -27,12 +27,21 @@ export type FlowEdge = {
   amount: string;
   decimals: number;
   latestAt: string;
+  latestTimeKind: "block" | "observed";
+  providers: string[];
+  sourceHosts: string[];
 };
 
 export type WalletFlowGraphModel = {
   nodes: FlowNode[];
   edges: FlowEdge[];
   truncated: boolean;
+};
+
+export type ObservedPathAnalysis = {
+  depthByNode: Map<string, number>;
+  paths: Array<{ targetId: string; depth: number; edgeIds: string[] }>;
+  pathEdgeIds: Set<string>;
 };
 
 const evmNetworks = new Set(["ethereum", "base", "arbitrum"]);
@@ -104,6 +113,9 @@ export function buildWalletFlowGraph(
       decimals: number;
       transfers: number;
       latestAt: string;
+      latestTimeKind: "block" | "observed";
+      providers: Set<string>;
+      sourceHosts: Set<string>;
     }
   >();
   const nodeKeys = new Set<string>();
@@ -115,13 +127,18 @@ export function buildWalletFlowGraph(
     const assetKey =
       transfer.token_contract_address?.toLowerCase() || transfer.asset;
     const id = `${from}>${to}:${assetKey}`;
+    const observedAt = transfer.block_time ?? transfer.observed_at;
+    const timeKind = transfer.block_time ? "block" : "observed";
     const existing = edgeRows.get(id);
     if (existing) {
       existing.amount += rawAmount(transfer);
       existing.transfers += 1;
-      if (transfer.block_time && transfer.block_time > existing.latestAt) {
-        existing.latestAt = transfer.block_time;
+      if (observedAt > existing.latestAt) {
+        existing.latestAt = observedAt;
+        existing.latestTimeKind = timeKind;
       }
+      existing.providers.add(transfer.provider);
+      if (transfer.source_host) existing.sourceHosts.add(transfer.source_host);
     } else {
       edgeRows.set(id, {
         from,
@@ -130,7 +147,12 @@ export function buildWalletFlowGraph(
         amount: rawAmount(transfer),
         decimals: transfer.token_decimals ?? 0,
         transfers: 1,
-        latestAt: transfer.block_time ?? transfer.observed_at,
+        latestAt: observedAt,
+        latestTimeKind: timeKind,
+        providers: new Set([transfer.provider]),
+        sourceHosts: new Set(
+          transfer.source_host ? [transfer.source_host] : [],
+        ),
       });
     }
   }
@@ -169,6 +191,9 @@ export function buildWalletFlowGraph(
       amount: formatRawAmount(edge.amount, edge.decimals),
       decimals: edge.decimals,
       latestAt: edge.latestAt,
+      latestTimeKind: edge.latestTimeKind,
+      providers: [...edge.providers].sort(),
+      sourceHosts: [...edge.sourceHosts].sort(),
     }));
   if (edgeRows.size > MAX_EDGES) truncated = true;
 
@@ -190,4 +215,41 @@ export function buildWalletFlowGraph(
   });
 
   return { nodes, edges, truncated };
+}
+
+export function findObservedPaths(
+  edges: FlowEdge[],
+  originId: string,
+  maxDepth: 1 | 2 | 3,
+): ObservedPathAnalysis {
+  const outgoing = new Map<string, FlowEdge[]>();
+  for (const edge of edges) {
+    const fromEdges = outgoing.get(edge.from) ?? [];
+    fromEdges.push(edge);
+    outgoing.set(edge.from, fromEdges);
+  }
+
+  const depthByNode = new Map([[originId, 0]]);
+  const paths: ObservedPathAnalysis["paths"] = [];
+  const pathByNode = new Map<string, string[]>([[originId, []]]);
+  const pathEdgeIds = new Set<string>();
+  const queue = [originId];
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const from = queue[cursor];
+    const depth = depthByNode.get(from) ?? 0;
+    if (depth >= maxDepth) continue;
+
+    for (const edge of outgoing.get(from) ?? []) {
+      if (depthByNode.has(edge.to)) continue;
+      const nextDepth = depth + 1;
+      depthByNode.set(edge.to, nextDepth);
+      queue.push(edge.to);
+      const edgeIds = [...(pathByNode.get(from) ?? []), edge.id];
+      pathByNode.set(edge.to, edgeIds);
+      paths.push({ targetId: edge.to, depth: nextDepth, edgeIds });
+      edgeIds.forEach((edgeId) => pathEdgeIds.add(edgeId));
+    }
+  }
+
+  return { depthByNode, paths, pathEdgeIds };
 }
