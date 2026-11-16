@@ -6,7 +6,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 
-use crate::{ApiState, addresses::Network, error::ApiError};
+use crate::{
+    ApiState,
+    addresses::{Network, normalize_evm_address},
+    error::ApiError,
+    networks::NetworkFamily,
+};
 
 const SOURCE_CODE: &str = "ofac_sdn";
 const SOURCE_NAME: &str = "OFAC Specially Designated Nationals List";
@@ -213,7 +218,7 @@ pub async fn import_ofac_snapshot(
 
 #[derive(Debug, Deserialize)]
 pub struct ScreenAddressQuery {
-    network: Network,
+    network: String,
     address: String,
 }
 
@@ -236,7 +241,7 @@ struct ExactAddressMatch {
 
 #[derive(Debug, Serialize)]
 pub struct ScreenAddressResponse {
-    network: &'static str,
+    network: String,
     status: &'static str,
     match_type: &'static str,
     source: Option<DatasetSnapshot>,
@@ -248,16 +253,24 @@ pub async fn screen_address(
     State(state): State<ApiState>,
     Query(query): Query<ScreenAddressQuery>,
 ) -> Result<Json<ScreenAddressResponse>, ApiError> {
-    let address = query.network.normalize(&query.address)?;
-    let network = query.network.as_str();
-    let currency = match query.network {
-        Network::Bitcoin => Some("XBT"),
-        Network::Ethereum => Some("ETH"),
-        Network::Base | Network::Arbitrum => None,
+    let catalog_entry = state
+        .blockscout
+        .network_by_id(&query.network)
+        .await
+        .ok_or(ApiError::UnsupportedNetwork)?;
+    let network = catalog_entry.id.clone();
+    let (address, currency) = match network.as_str() {
+        "bitcoin" => (Network::Bitcoin.normalize(&query.address)?, Some("XBT")),
+        "ethereum" => (normalize_evm_address(&query.address)?, Some("ETH")),
+        "base" | "arbitrum" => (normalize_evm_address(&query.address)?, None),
+        _ if catalog_entry.family == NetworkFamily::Evm => {
+            (normalize_evm_address(&query.address)?, None)
+        }
+        _ => return Err(ApiError::UnsupportedNetwork),
     };
     let Some(currency) = currency else {
         return Ok(Json(ScreenAddressResponse {
-            network,
+            network: network.clone(),
             status: "network_not_covered",
             match_type: "exact_address",
             source: None,
@@ -275,7 +288,7 @@ pub async fn screen_address(
     .await?;
     let Some(source) = source else {
         return Ok(Json(ScreenAddressResponse {
-            network,
+            network: network.clone(),
             status: "source_not_imported",
             match_type: "exact_address",
             source: None,
@@ -305,7 +318,7 @@ pub async fn screen_address(
         "exact_match"
     };
     Ok(Json(ScreenAddressResponse {
-        network,
+        network: network.clone(),
         status,
         match_type: "exact_address",
         source: Some(source),

@@ -2,6 +2,12 @@
 
 `docker compose up` starts the `sync-worker` service, which periodically refreshes every tracked address through the existing Esplora and Blockscout adapters. Stop it with `docker compose stop sync-worker` to disable background reads; the API and manual sync endpoints remain available.
 
+## Network catalog and provider selection
+
+`GET /api/v1/networks` returns Bitcoin plus the EVM mainnets currently published by Blockscout's `/api/json/config`. The API keeps the catalog in memory for six hours and falls back to the last successful catalog or the built-in Bitcoin, Ethereum, Base, and Arbitrum entries if refresh fails. Legacy IDs remain `bitcoin`, `ethereum`, `base`, and `arbitrum`; other EVM networks use `eip155:<chain_id>`. EVM address format does not identify a chain, so the analyst selects a network from this catalog.
+
+For each chain, the API prefers a validated HTTPS Blockscout instance URL from `instance_url_from_config` or an explorer explicitly hosted by Blockscout. It does not send requests to arbitrary explorer URLs or follow redirects. If `BLOCKSCOUT_API_KEY` is set, the configured multichain API base is used instead; a custom `BLOCKSCOUT_BASE_URL` also acts as an explicit provider override. The `history_sync_available` value means a provider route is configured, not that the endpoint was health-checked. Individual instances may rate-limit, block automated requests, return HTML challenges, or omit history; those responses become a generic provider-unavailable error and are not stored as observations.
+
 ```bash
 docker compose up --build
 ```
