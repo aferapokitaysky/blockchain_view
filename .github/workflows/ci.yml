@@ -36,6 +36,22 @@ jobs:
     name: Rust API
     runs-on: ubuntu-latest
     if: ${{ hashFiles('apps/api/Cargo.toml') != '' }}
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: tracefold_test
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:tracefold_test@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
