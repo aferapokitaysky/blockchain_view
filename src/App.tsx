@@ -1,4 +1,10 @@
-import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from "react";
 import {
   Activity,
   ArrowDownLeft,
@@ -30,6 +36,11 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { DEMO_WALLET_ASSESSMENT } from "./features/risk/scoreWallet";
+import {
+  detectAddressNetwork,
+  type AddressDetection,
+  type SupportedNetwork,
+} from "./features/networks/detectAddressNetwork";
 import "./App.css";
 
 type Network = "Ethereum" | "Bitcoin" | "Base" | "Arbitrum";
@@ -460,6 +471,11 @@ function App() {
   const [zoom, setZoom] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [query, setQuery] = useState("");
+  const [networkChoice, setNetworkChoice] = useState<SupportedNetwork | "">("");
+  const [addressDetection, setAddressDetection] = useState<AddressDetection>({
+    status: "empty",
+    message: "Paste a wallet address.",
+  });
   const [saved, setSaved] = useState(false);
   const [notice, setNotice] = useState("");
   const [activeTab, setActiveTab] = useState("Overview");
@@ -469,8 +485,19 @@ function App() {
       activeNetwork === "All networks" || transfer.network === activeNetwork,
   );
 
+  useEffect(() => {
+    let isCurrent = true;
+    void detectAddressNetwork(query).then((detection) => {
+      if (isCurrent) setAddressDetection(detection);
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [query]);
+
   const handleSearch = (value: string) => {
     setQuery(value);
+    setNetworkChoice("");
     if (!value) return;
     const match = nodes.find((node) =>
       `${node.address} ${node.name}`
@@ -482,9 +509,29 @@ function App() {
 
   const submitAddress = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const network =
+      addressDetection.status === "detected"
+        ? addressDetection.network
+        : addressDetection.status === "ambiguous"
+          ? networkChoice
+          : "";
+    if (!network) {
+      setNotice(
+        addressDetection.status === "ambiguous"
+          ? "Select the EVM network before tracking this wallet"
+          : "Enter a valid address on a supported network",
+      );
+      return;
+    }
     setShowAdd(false);
-    setNotice("Адрес добавлен в очередь анализа");
+    setNotice(`Address queued for ${network} analysis`);
     window.setTimeout(() => setNotice(""), 3400);
+  };
+
+  const openAddWallet = () => {
+    setQuery("");
+    setNetworkChoice("");
+    setShowAdd(true);
   };
 
   const copyAddress = async () => {
@@ -644,10 +691,7 @@ function App() {
                 {saved ? <ShieldCheck size={16} /> : <Download size={16} />}{" "}
                 {saved ? "Saved to watchlist" : "Save investigation"}
               </button>
-              <button
-                className="button button-primary"
-                onClick={() => setShowAdd(true)}
-              >
+              <button className="button button-primary" onClick={openAddWallet}>
                 <Plus size={17} /> Add wallet
               </button>
             </div>
@@ -1107,35 +1151,40 @@ function App() {
                 />
                 <Search size={16} />
               </div>
-              <div className="detection-note">
+              <div
+                className={`detection-note detection-${addressDetection.status}`}
+              >
                 <span className="detection-spark">
                   <Sparkles size={13} />
                 </span>
                 <span>
                   <b>Network detection</b>
-                  <small>
-                    Recognized from address format · confirm before tracking
-                  </small>
+                  <small>{addressDetection.message}</small>
                 </span>
-                <button
-                  type="button"
-                  className="network-detected"
-                  onClick={() =>
-                    setNotice(
-                      "Для EVM-адресов может потребоваться ручной выбор сети",
-                    )
-                  }
-                >
-                  <NetworkMark
-                    network={query.startsWith("bc1") ? "Bitcoin" : "Ethereum"}
-                  />
-                  {query
-                    ? query.startsWith("bc1")
-                      ? "Bitcoin"
-                      : "EVM network"
-                    : "Auto-detect"}
-                  <ChevronDown size={12} />
-                </button>
+                {addressDetection.status === "detected" && (
+                  <span className="network-detected">
+                    <NetworkMark network="Bitcoin" /> Bitcoin mainnet
+                  </span>
+                )}
+                {addressDetection.status === "ambiguous" && (
+                  <select
+                    id="wallet-network"
+                    className="network-detected"
+                    aria-label="Select EVM network"
+                    value={networkChoice}
+                    onChange={(event) =>
+                      setNetworkChoice(event.target.value as SupportedNetwork)
+                    }
+                    required
+                  >
+                    <option value="">Select network</option>
+                    {addressDetection.candidates.map((network) => (
+                      <option key={network} value={network}>
+                        {network}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <label htmlFor="wallet-label">
                 Label <span>Optional</span>
@@ -1157,7 +1206,14 @@ function App() {
                 >
                   Cancel
                 </button>
-                <button className="button button-primary" type="submit">
+                <button
+                  className="button button-primary"
+                  type="submit"
+                  disabled={
+                    addressDetection.status !== "detected" &&
+                    !(addressDetection.status === "ambiguous" && networkChoice)
+                  }
+                >
                   <Plus size={15} /> Track wallet
                 </button>
               </div>
