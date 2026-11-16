@@ -5,6 +5,7 @@ const API_BASE_URL = (
 ).replace(/\/$/, "");
 const REQUEST_TIMEOUT_MS = 8_000;
 const SYNC_TIMEOUT_MS = 260_000;
+const ADDRESS_LIST_CONCURRENCY = 4;
 
 type Investigation = {
   id: string;
@@ -62,6 +63,7 @@ async function requestJson<T>(
   path: string,
   init?: RequestInit,
   timeoutMs = REQUEST_TIMEOUT_MS,
+  failureMessage = "The API request failed. Please try again.",
 ): Promise<T> {
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
@@ -95,10 +97,7 @@ async function requestJson<T>(
           response.status,
         );
       }
-      throw new ApiRequestError(
-        "Could not save the wallet. Please try again.",
-        response.status,
-      );
+      throw new ApiRequestError(failureMessage, response.status);
     }
 
     return (await response.json()) as T;
@@ -122,26 +121,61 @@ async function requestJson<T>(
 async function ensureInvestigation(): Promise<string> {
   const investigations = await requestJson<Investigation[]>(
     "/api/v1/investigations",
+    undefined,
+    REQUEST_TIMEOUT_MS,
+    "Could not load investigations. Please try again.",
   );
   if (investigations[0]) return investigations[0].id;
 
-  const created = await requestJson<Investigation>("/api/v1/investigations", {
-    method: "POST",
-    body: JSON.stringify({ name: "Wallet flow investigation" }),
-  });
+  const created = await requestJson<Investigation>(
+    "/api/v1/investigations",
+    {
+      method: "POST",
+      body: JSON.stringify({ name: "Wallet flow investigation" }),
+    },
+    REQUEST_TIMEOUT_MS,
+    "Could not create an investigation. Please try again.",
+  );
   return created.id;
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  mapValue: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, values.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < values.length) {
+        const index = nextIndex++;
+        results[index] = await mapValue(values[index]);
+      }
+    }),
+  );
+  return results;
 }
 
 export async function listTrackedWallets(): Promise<TrackedAddress[]> {
   const investigations = await requestJson<Investigation[]>(
     "/api/v1/investigations",
+    undefined,
+    REQUEST_TIMEOUT_MS,
+    "Could not load investigations. Please try again.",
   );
-  const addresses = await Promise.all(
-    investigations.map((investigation) =>
+  const addresses = await mapWithConcurrency(
+    investigations,
+    ADDRESS_LIST_CONCURRENCY,
+    (investigation) =>
       requestJson<TrackedAddress[]>(
         `/api/v1/investigations/${investigation.id}/addresses`,
+        undefined,
+        REQUEST_TIMEOUT_MS,
+        "Could not load saved addresses. Please try again.",
       ),
-    ),
   );
   return addresses.flat();
 }
@@ -165,6 +199,8 @@ export async function trackWallet(input: {
         label: input.label?.trim() || null,
       }),
     },
+    REQUEST_TIMEOUT_MS,
+    "Could not save the wallet. Please try again.",
   );
 }
 
@@ -175,6 +211,7 @@ export async function syncWalletHistory(
     `/api/v1/investigations/${address.investigation_id}/addresses/${address.id}/sync`,
     { method: "POST" },
     SYNC_TIMEOUT_MS,
+    "Could not sync Bitcoin history. Please try again.",
   );
 }
 
@@ -183,6 +220,9 @@ export async function listWalletHistory(
 ): Promise<ObservedTransfer[]> {
   return requestJson<ObservedTransfer[]>(
     `/api/v1/investigations/${address.investigation_id}/addresses/${address.id}/transfers`,
+    undefined,
+    REQUEST_TIMEOUT_MS,
+    "Could not load saved wallet history. Please try again.",
   );
 }
 
