@@ -91,6 +91,12 @@ fn test_state(database: PgPool) -> ApiState {
             .expect("тестовый Redis URL должен разбираться"),
         http_client: reqwest::Client::new(),
         bitcoin_esplora_url: "https://blockstream.info/api".into(),
+        blockscout: tracefold_api::evm_sync::BlockscoutClient::new(
+            "http://127.0.0.1:1",
+            None,
+            reqwest::Client::new(),
+        )
+        .expect("тестовый Blockscout URL должен разбираться"),
     }
 }
 

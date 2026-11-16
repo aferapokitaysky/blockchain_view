@@ -8,13 +8,13 @@
 
 Пара `{investigation_id}` і `{address_id}` має вказувати на адресу всередині цього розслідування.
 
-| Метод | Шлях | Результат |
-| --- | --- | --- |
-| `GET` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals` | До 500 сигналів, спочатку найновіші. |
-| `POST` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals` | Створити сигнал; відповідь `201 Created`. |
-| `GET` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Отримати один сигнал. |
-| `PUT` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Замінити всі поля, доступні для редагування; відповідь `200 OK`. |
-| `DELETE` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Видалити сигнал; відповідь `204 No Content`. |
+| Метод    | Шлях                                                                                        | Результат                                                        |
+| -------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `GET`    | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals`             | До 500 сигналів, спочатку найновіші.                             |
+| `POST`   | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals`             | Створити сигнал; відповідь `201 Created`.                        |
+| `GET`    | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Отримати один сигнал.                                            |
+| `PUT`    | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Замінити всі поля, доступні для редагування; відповідь `200 OK`. |
+| `DELETE` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Видалити сигнал; відповідь `204 No Content`.                     |
 
 ## Тіло запиту
 

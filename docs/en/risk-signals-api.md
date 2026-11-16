@@ -8,13 +8,13 @@ The API has no authentication yet and is intended for local development only. Do
 
 The `{investigation_id}` and `{address_id}` path values must identify an address that belongs to that investigation.
 
-| Method | Path | Result |
-| --- | --- | --- |
-| `GET` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals` | List up to 500 signals, newest observation first. |
-| `POST` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals` | Create a signal; returns `201 Created`. |
-| `GET` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Read one signal. |
-| `PUT` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Replace all editable fields; returns `200 OK`. |
-| `DELETE` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Delete one signal; returns `204 No Content`. |
+| Method   | Path                                                                                        | Result                                            |
+| -------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `GET`    | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals`             | List up to 500 signals, newest observation first. |
+| `POST`   | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals`             | Create a signal; returns `201 Created`.           |
+| `GET`    | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Read one signal.                                  |
+| `PUT`    | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Replace all editable fields; returns `200 OK`.    |
+| `DELETE` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Delete one signal; returns `204 No Content`.      |
 
 ## Request body
 

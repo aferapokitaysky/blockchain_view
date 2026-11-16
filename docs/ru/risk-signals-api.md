@@ -8,13 +8,13 @@
 
 Пара `{investigation_id}` и `{address_id}` должна указывать на адрес внутри этого расследования.
 
-| Метод | Путь | Результат |
-| --- | --- | --- |
-| `GET` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals` | До 500 сигналов, сначала самые новые. |
-| `POST` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals` | Создать сигнал; ответ `201 Created`. |
-| `GET` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Получить один сигнал. |
-| `PUT` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Заменить все редактируемые поля; ответ `200 OK`. |
-| `DELETE` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Удалить сигнал; ответ `204 No Content`. |
+| Метод    | Путь                                                                                        | Результат                                        |
+| -------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `GET`    | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals`             | До 500 сигналов, сначала самые новые.            |
+| `POST`   | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals`             | Создать сигнал; ответ `201 Created`.             |
+| `GET`    | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Получить один сигнал.                            |
+| `PUT`    | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Заменить все редактируемые поля; ответ `200 OK`. |
+| `DELETE` | `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}` | Удалить сигнал; ответ `204 No Content`.          |
 
 ## Тело запроса
 
