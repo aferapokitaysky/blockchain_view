@@ -516,6 +516,15 @@ function App() {
   const riskSignalsLoading = Boolean(
     selectedTrackedAddress && !walletRiskSignals && !riskSignalsError,
   );
+  const selectedObservedTransfers = useMemo(
+    () =>
+      activityStatus === "ready" && selectedTrackedAddress
+        ? (activityHistories.find(
+            (history) => history.address.id === selectedTrackedAddress.id,
+          )?.transfers ?? [])
+        : [],
+    [activityHistories, activityStatus, selectedTrackedAddress],
+  );
   const transactionFeed = useMemo(
     () => buildTransactionFeed(activityHistories),
     [activityHistories],
@@ -536,8 +545,13 @@ function App() {
     (currentActivityPage + 1) * TRANSACTIONS_PER_PAGE,
   );
   const walletAssessment = useMemo(
-    () => buildWalletAssessment(walletRiskSignals ?? [], screeningResult),
-    [walletRiskSignals, screeningResult],
+    () =>
+      buildWalletAssessment(
+        walletRiskSignals ?? [],
+        screeningResult,
+        selectedObservedTransfers,
+      ),
+    [walletRiskSignals, screeningResult, selectedObservedTransfers],
   );
 
   useEffect(() => {
@@ -1344,8 +1358,9 @@ function App() {
                   <div className="risk-signal-list">
                     {walletAssessment.contributions.length === 0 ? (
                       <div className="address-state">
-                        No analyst-entered evidence is recorded for this
-                        address.
+                        {activityStatus === "ready"
+                          ? "No matching observations or analyst evidence are recorded for this address."
+                          : "Saved transaction observations are not loaded, so behavior signals are unavailable."}
                       </div>
                     ) : (
                       walletAssessment.contributions.map((item) => {

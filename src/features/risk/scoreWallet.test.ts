@@ -102,7 +102,7 @@ describe("wallet risk assessment", () => {
       assessment.contributions.map(({ contribution }) => contribution),
     ).toEqual([48, 13.2, 11.2]);
     expect(assessment.score).toBe(72);
-    expect(assessment.modelVersion).toBe("0.1.0");
+    expect(assessment.modelVersion).toBe("0.2.0");
   });
 
   it("maps only exact OFAC matches into a direct sanctions signal", () => {

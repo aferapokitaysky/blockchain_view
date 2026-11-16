@@ -1,9 +1,11 @@
 import type {
   AddressScreeningResult,
+  ObservedTransfer,
   StoredRiskSignal,
 } from "../investigations/api";
+import { deriveBehaviorSignals } from "./behaviorSignals";
 
-export const RISK_MODEL_VERSION = "0.1.0";
+export const RISK_MODEL_VERSION = "0.2.0";
 
 export type RiskSignal = {
   id: string;
@@ -170,9 +172,11 @@ export function scoreWallet(signals: RiskSignal[]): RiskAssessment {
 export function buildWalletAssessment(
   storedSignals: StoredRiskSignal[],
   screening: AddressScreeningResult | null,
+  observedTransfers: ObservedTransfer[] = [],
 ): RiskAssessment {
   return scoreWallet([
     ...storedSignals.map(mapStoredRiskSignal),
     ...mapOfacMatches(screening),
+    ...deriveBehaviorSignals(observedTransfers),
   ]);
 }
