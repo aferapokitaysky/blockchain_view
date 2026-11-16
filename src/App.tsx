@@ -44,7 +44,9 @@ import {
 import {
   ApiRequestError,
   checkApiHealth,
+  syncWalletHistory,
   trackWallet,
+  type TrackedAddress,
 } from "./features/investigations/api";
 import "./App.css";
 
@@ -489,6 +491,10 @@ function App() {
   });
   const [saved, setSaved] = useState(false);
   const [notice, setNotice] = useState("");
+  const [addressToSync, setAddressToSync] = useState<TrackedAddress | null>(
+    null,
+  );
+  const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState("Overview");
   const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[0];
   const visibleTransfers = transfers.filter(
@@ -554,17 +560,24 @@ function App() {
     setFormError("");
     setIsSubmitting(true);
     try {
-      await trackWallet({ network, address: query, label: walletLabel });
+      const trackedAddress = await trackWallet({
+        network,
+        address: query,
+        label: walletLabel,
+      });
+      setAddressToSync(network === "Bitcoin" ? trackedAddress : null);
       setShowAdd(false);
       setQuery("");
       setWalletLabel("");
       setNetworkChoice("");
       setNotice(
-        "Wallet saved to " +
-          network +
-          ". Live transaction monitoring is not active yet.",
+        network === "Bitcoin"
+          ? "Bitcoin wallet saved. History can be synced on demand."
+          : `Wallet saved to ${network}. History sync is not available for this network yet.`,
       );
-      window.setTimeout(() => setNotice(""), 5000);
+      if (network !== "Bitcoin") {
+        window.setTimeout(() => setNotice(""), 5000);
+      }
     } catch (error) {
       setFormError(
         error instanceof ApiRequestError
@@ -573,6 +586,30 @@ function App() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const syncSavedAddress = async () => {
+    if (!addressToSync || isSyncing) return;
+    setIsSyncing(true);
+    setNotice("Requesting Bitcoin history from Blockstream Esplora…");
+    try {
+      const result = await syncWalletHistory(addressToSync);
+      const coverage = result.may_have_more_history
+        ? " The provider page limit was reached; older history may be missing."
+        : "";
+      setNotice(
+        `Saved ${result.fetched} Bitcoin observations from ${result.provider}.${coverage}`,
+      );
+      setAddressToSync(null);
+    } catch (error) {
+      setNotice(
+        error instanceof ApiRequestError
+          ? error.message
+          : "Could not sync Bitcoin history. Try again later.",
+      );
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -1311,6 +1348,15 @@ function App() {
             <ShieldCheck size={15} />
           </span>
           {notice}
+          {addressToSync && (
+            <button
+              className="toast-action"
+              onClick={syncSavedAddress}
+              disabled={isSyncing}
+            >
+              {isSyncing ? "Syncing…" : "Sync history"}
+            </button>
+          )}
           <button aria-label="Скрыть уведомление" onClick={() => setNotice("")}>
             <X size={14} />
           </button>
