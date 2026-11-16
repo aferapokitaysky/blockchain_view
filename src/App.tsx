@@ -44,6 +44,7 @@ import {
 import {
   ApiRequestError,
   checkApiHealth,
+  listTrackedWallets,
   listWalletHistory,
   syncWalletHistory,
   trackWallet,
@@ -494,15 +495,23 @@ function App() {
   });
   const [saved, setSaved] = useState(false);
   const [notice, setNotice] = useState("");
-  const [addressToSync, setAddressToSync] = useState<TrackedAddress | null>(
-    null,
+  const [trackedAddresses, setTrackedAddresses] = useState<TrackedAddress[]>(
+    [],
   );
+  const [addressesLoading, setAddressesLoading] = useState(true);
+  const [addressesError, setAddressesError] = useState("");
+  const [selectedAddressId, setSelectedAddressId] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const [historyRecords, setHistoryRecords] = useState<
     ObservedTransfer[] | null
   >(null);
   const [activeTab, setActiveTab] = useState("Overview");
   const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[0];
+  const selectedTrackedAddress = trackedAddresses.find(
+    (address) => address.id === selectedAddressId,
+  );
   const visibleTransfers = transfers.filter(
     (transfer) =>
       activeNetwork === "All networks" || transfer.network === activeNetwork,
@@ -532,6 +541,45 @@ function App() {
       window.clearInterval(refreshInterval);
     };
   }, []);
+
+  const loadTrackedAddresses = async () => {
+    setAddressesError("");
+    try {
+      const addresses = await listTrackedWallets();
+      setTrackedAddresses(addresses);
+      setSelectedAddressId((current) =>
+        addresses.some((address) => address.id === current)
+          ? current
+          : (addresses[0]?.id ?? ""),
+      );
+    } catch (error) {
+      setAddressesError(
+        error instanceof ApiRequestError
+          ? error.message
+          : "Could not load saved addresses. Try again.",
+      );
+    } finally {
+      setAddressesLoading(false);
+    }
+  };
+
+  const retryAddressLoad = async () => {
+    setAddressesLoading(true);
+    const isOnline = await checkApiHealth();
+    setApiStatus(isOnline ? "online" : "offline");
+    if (isOnline) {
+      await loadTrackedAddresses();
+    } else {
+      setAddressesError("The API is unavailable. Check the service and retry.");
+      setAddressesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (apiStatus === "online") {
+      void Promise.resolve().then(loadTrackedAddresses);
+    }
+  }, [apiStatus]);
 
   const handleSearch = (value: string) => {
     setQuery(value);
@@ -571,7 +619,12 @@ function App() {
         address: query,
         label: walletLabel,
       });
-      setAddressToSync(network === "Bitcoin" ? trackedAddress : null);
+      setTrackedAddresses((addresses) => [
+        trackedAddress,
+        ...addresses.filter((address) => address.id !== trackedAddress.id),
+      ]);
+      setSelectedAddressId(trackedAddress.id);
+      setHistoryRecords(null);
       setShowAdd(false);
       setQuery("");
       setWalletLabel("");
@@ -596,16 +649,23 @@ function App() {
   };
 
   const syncSavedAddress = async () => {
-    if (!addressToSync || isSyncing) return;
+    if (
+      !selectedTrackedAddress ||
+      selectedTrackedAddress.network !== "bitcoin" ||
+      isSyncing
+    )
+      return;
     setIsSyncing(true);
-    setNotice("Requesting Bitcoin history from Blockstream Esplora…");
+    setHistoryError("");
     try {
-      const result = await syncWalletHistory(addressToSync);
+      const result = await syncWalletHistory(selectedTrackedAddress);
       let records: ObservedTransfer[];
       try {
-        records = await listWalletHistory(addressToSync);
+        records = await listWalletHistory(selectedTrackedAddress);
       } catch {
-        setNotice("History was synced, but saved records could not be loaded.");
+        setHistoryError(
+          "History synced, but saved records could not be loaded. Retry loading history.",
+        );
         return;
       }
       setHistoryRecords(records);
@@ -615,15 +675,31 @@ function App() {
       setNotice(
         `Saved ${result.fetched} Bitcoin observations from ${result.provider}.${coverage}`,
       );
-      setAddressToSync(null);
     } catch (error) {
-      setNotice(
+      setHistoryError(
         error instanceof ApiRequestError
           ? error.message
           : "Could not sync Bitcoin history. Try again later.",
       );
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const viewSavedHistory = async () => {
+    if (!selectedTrackedAddress) return;
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      setHistoryRecords(await listWalletHistory(selectedTrackedAddress));
+    } catch (error) {
+      setHistoryError(
+        error instanceof ApiRequestError
+          ? error.message
+          : "Could not load saved history. Try again.",
+      );
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -1103,6 +1179,123 @@ function App() {
             </div>
           </section>
 
+          <section
+            className="saved-addresses-panel"
+            aria-labelledby="saved-addresses-title"
+          >
+            <div className="activity-head">
+              <div>
+                <h2 id="saved-addresses-title">Saved addresses</h2>
+                <p>Addresses stored in the investigation API</p>
+              </div>
+              <button
+                className="text-action"
+                onClick={() => void retryAddressLoad()}
+                disabled={addressesLoading}
+              >
+                {addressesLoading ? "Loading…" : "Refresh list"}
+              </button>
+            </div>
+            {apiStatus === "offline" ? (
+              <div className="address-state address-error" role="alert">
+                <span>
+                  {addressesError ||
+                    "The API is unavailable. Check the service and retry."}
+                </span>
+                <button
+                  className="text-action"
+                  onClick={() => void retryAddressLoad()}
+                  disabled={addressesLoading}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : addressesLoading ? (
+              <p className="address-state" role="status">
+                Loading saved addresses…
+              </p>
+            ) : addressesError ? (
+              <div className="address-state address-error" role="alert">
+                <span>{addressesError}</span>
+                <button
+                  className="text-action"
+                  onClick={() => void retryAddressLoad()}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : trackedAddresses.length === 0 ? (
+              <p className="address-state">
+                No addresses saved yet. Track a wallet to add it here.
+              </p>
+            ) : (
+              <div className="address-management">
+                <label
+                  className="address-picker-label"
+                  htmlFor="tracked-address-picker"
+                >
+                  Select an address
+                </label>
+                <select
+                  id="tracked-address-picker"
+                  value={selectedAddressId}
+                  onChange={(event) => {
+                    setSelectedAddressId(event.target.value);
+                    setHistoryRecords(null);
+                    setHistoryError("");
+                  }}
+                >
+                  {trackedAddresses.map((address) => (
+                    <option key={address.id} value={address.id}>
+                      {address.label ? `${address.label} · ` : ""}
+                      {address.address} ({address.network})
+                    </option>
+                  ))}
+                </select>
+                <div className="address-management-actions">
+                  <button
+                    className="button button-secondary"
+                    onClick={() => void viewSavedHistory()}
+                    disabled={!selectedTrackedAddress || historyLoading}
+                  >
+                    {historyLoading ? "Loading history…" : "View saved history"}
+                  </button>
+                  <button
+                    className="button button-primary"
+                    onClick={() => void syncSavedAddress()}
+                    disabled={
+                      !selectedTrackedAddress ||
+                      selectedTrackedAddress.network !== "bitcoin" ||
+                      isSyncing
+                    }
+                  >
+                    {isSyncing ? "Syncing…" : "Sync Bitcoin history"}
+                  </button>
+                </div>
+                <p className="address-note">
+                  {selectedTrackedAddress?.network === "bitcoin"
+                    ? "Saved history is loaded on demand. Sync requests Bitcoin data from the configured Esplora provider."
+                    : "This address is saved. History sync is currently available for Bitcoin only; EVM providers are not connected."}
+                </p>
+                {historyError && (
+                  <div className="address-state address-error" role="alert">
+                    <span>{historyError}</span>
+                    <button
+                      className="text-action"
+                      onClick={() =>
+                        selectedTrackedAddress?.network === "bitcoin"
+                          ? void syncSavedAddress()
+                          : void viewSavedHistory()
+                      }
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
           <section className="activity-panel">
             <div className="activity-head">
               <div>
@@ -1442,15 +1635,6 @@ function App() {
             <ShieldCheck size={15} />
           </span>
           {notice}
-          {addressToSync && (
-            <button
-              className="toast-action"
-              onClick={syncSavedAddress}
-              disabled={isSyncing}
-            >
-              {isSyncing ? "Syncing…" : "Sync history"}
-            </button>
-          )}
           <button aria-label="Скрыть уведомление" onClick={() => setNotice("")}>
             <X size={14} />
           </button>
