@@ -44,8 +44,10 @@ import {
 import {
   ApiRequestError,
   checkApiHealth,
+  listWalletHistory,
   syncWalletHistory,
   trackWallet,
+  type ObservedTransfer,
   type TrackedAddress,
 } from "./features/investigations/api";
 import "./App.css";
@@ -232,6 +234,20 @@ const networkMeta: Record<Network, { color: string }> = {
   Base: { color: "#5595ff" },
   Arbitrum: { color: "#64c8fa" },
 };
+
+function formatSatoshis(value: string): string {
+  try {
+    const satoshis = BigInt(value);
+    const whole = satoshis / 100_000_000n;
+    const fraction = (satoshis % 100_000_000n)
+      .toString()
+      .padStart(8, "0")
+      .replace(/0+$/, "");
+    return `${whole}${fraction ? `.${fraction}` : ""} BTC`;
+  } catch {
+    return `${value} sat`;
+  }
+}
 
 function NetworkShape({ network }: { network: Network }) {
   return (
@@ -495,6 +511,9 @@ function App() {
     null,
   );
   const [isSyncing, setIsSyncing] = useState(false);
+  const [historyRecords, setHistoryRecords] = useState<
+    ObservedTransfer[] | null
+  >(null);
   const [activeTab, setActiveTab] = useState("Overview");
   const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[0];
   const visibleTransfers = transfers.filter(
@@ -595,6 +614,14 @@ function App() {
     setNotice("Requesting Bitcoin history from Blockstream Esplora…");
     try {
       const result = await syncWalletHistory(addressToSync);
+      let records: ObservedTransfer[];
+      try {
+        records = await listWalletHistory(addressToSync);
+      } catch {
+        setNotice("History was synced, but saved records could not be loaded.");
+        return;
+      }
+      setHistoryRecords(records);
       const coverage = result.may_have_more_history
         ? " The provider page limit was reached; older history may be missing."
         : "";
@@ -1198,6 +1225,86 @@ function App() {
           </footer>
         </div>
       </main>
+
+      {historyRecords && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) =>
+            event.target === event.currentTarget && setHistoryRecords(null)
+          }
+        >
+          <section
+            className="add-modal history-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="history-title"
+          >
+            <div className="modal-top">
+              <span className="modal-icon">
+                <Activity size={18} />
+              </span>
+              <button
+                className="icon-button"
+                aria-label="Close history"
+                onClick={() => setHistoryRecords(null)}
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <h2 id="history-title">Observed Bitcoin history</h2>
+            <p>
+              {historyRecords.length} saved transaction observations. Source:{" "}
+              {historyRecords[0]?.provider ?? "Esplora API"}. Values show
+              address-level inputs and outputs, not a transfer between
+              identified owners.
+            </p>
+            {historyRecords.length === 0 ? (
+              <div className="history-empty">
+                No Bitcoin transactions were returned for this address.
+              </div>
+            ) : (
+              <ul className="history-list">
+                {historyRecords.map((record) => (
+                  <li key={record.id}>
+                    <div className="history-record-top">
+                      <code>
+                        {record.transaction_hash.slice(0, 12)}…
+                        {record.transaction_hash.slice(-8)}
+                      </code>
+                      <span
+                        className={`history-status ${record.confirmed ? "confirmed" : "pending"}`}
+                      >
+                        {record.confirmed ? "Confirmed" : "Mempool"}
+                      </span>
+                    </div>
+                    <small>
+                      {record.block_time
+                        ? new Date(record.block_time).toLocaleString()
+                        : "Not confirmed"}
+                      {record.block_height
+                        ? ` · Block ${record.block_height}`
+                        : ""}
+                      {` · ${record.provider}`}
+                    </small>
+                    <div className="history-amounts">
+                      {record.received_amount !== "0" && (
+                        <span className="history-received">
+                          Received {formatSatoshis(record.received_amount)}
+                        </span>
+                      )}
+                      {record.spent_amount !== "0" && (
+                        <span className="history-spent">
+                          Spent {formatSatoshis(record.spent_amount)}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
 
       {showAdd && (
         <div
