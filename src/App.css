@@ -1596,7 +1596,13 @@ tbody tr:hover {
   font-size: 9px;
   line-height: 1.5;
 }
-.risk-heading > .button {
+.risk-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+}
+.risk-heading-actions .button {
   height: 28px;
   font-size: 9px;
 }
@@ -1675,6 +1681,9 @@ tbody tr:hover {
 .risk-signal:last-child {
   border-bottom: 0;
 }
+.risk-signal-list > .address-state {
+  min-height: 100%;
+}
 .signal-mark {
   width: 25px;
   height: 25px;
@@ -1730,6 +1739,40 @@ tbody tr:hover {
   height: 2px;
   border-radius: 50%;
   background: #65746b;
+}
+.signal-meta a {
+  color: #9ab3a4;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.signal-contribution {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex: none;
+}
+.signal-contribution > small {
+  color: #93a198;
+  font-size: 8px;
+  white-space: nowrap;
+}
+.risk-evidence-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 9px 11px;
+  border: 1px solid #303c35;
+  border-radius: 7px;
+  color: #a5b2aa;
+  background: #151e1a;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.risk-evidence-note .text-action {
+  flex: none;
 }
 .severity-label {
   font-size: 8px;
@@ -2420,7 +2463,11 @@ select.network-detected {
   .risk-heading {
     gap: 9px;
   }
-  .risk-heading > .button {
+  .risk-heading-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .risk-heading-actions .button {
     max-width: 112px;
     height: auto;
     min-height: 29px;

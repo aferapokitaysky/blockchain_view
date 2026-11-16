@@ -35,7 +35,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { DEMO_WALLET_ASSESSMENT } from "./features/risk/scoreWallet";
+import { buildWalletAssessment } from "./features/risk/scoreWallet";
 import {
   detectAddressNetwork,
   type AddressDetection,
@@ -47,11 +47,13 @@ import {
   listTrackedWalletHistories,
   listTrackedWallets,
   listWalletHistory,
+  listWalletRiskSignals,
   screenWalletAddress,
   syncWalletHistory,
   trackWallet,
   type ObservedTransfer,
   type AddressScreeningResult,
+  type StoredRiskSignal,
   type TrackedAddress,
   type WalletHistory,
 } from "./features/investigations/api";
@@ -82,6 +84,18 @@ type Transfer = {
   direction: "in" | "out";
   status: "confirmed" | "pending";
 };
+
+function safeExternalLink(reference: string | null): string | null {
+  if (!reference) return null;
+  try {
+    const parsed = new URL(reference);
+    return parsed.protocol === "https:" || parsed.protocol === "http:"
+      ? parsed.href
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 const nodes: GraphNode[] = [
   {
@@ -521,14 +535,40 @@ function App() {
   const [screeningError, setScreeningError] = useState("");
   const [screeningResult, setScreeningResult] =
     useState<AddressScreeningResult | null>(null);
+  const [walletRiskSignalResult, setWalletRiskSignalResult] = useState<{
+    addressId: string;
+    signals: StoredRiskSignal[];
+  } | null>(null);
+  const [riskSignalFailure, setRiskSignalFailure] = useState<{
+    addressId: string;
+    message: string;
+  } | null>(null);
+  const [riskRefreshKey, setRiskRefreshKey] = useState(0);
   const [activeTab, setActiveTab] = useState("Overview");
   const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[0];
   const selectedTrackedAddress = trackedAddresses.find(
     (address) => address.id === selectedAddressId,
   );
+  const walletRiskSignals =
+    selectedTrackedAddress &&
+    walletRiskSignalResult?.addressId === selectedTrackedAddress.id
+      ? walletRiskSignalResult.signals
+      : null;
+  const riskSignalsError =
+    selectedTrackedAddress &&
+    riskSignalFailure?.addressId === selectedTrackedAddress.id
+      ? riskSignalFailure.message
+      : "";
+  const riskSignalsLoading = Boolean(
+    selectedTrackedAddress && !walletRiskSignals && !riskSignalsError,
+  );
   const visibleTransfers = transfers.filter(
     (transfer) =>
       activeNetwork === "All networks" || transfer.network === activeNetwork,
+  );
+  const walletAssessment = useMemo(
+    () => buildWalletAssessment(walletRiskSignals ?? [], screeningResult),
+    [walletRiskSignals, screeningResult],
   );
 
   useEffect(() => {
@@ -555,6 +595,34 @@ function App() {
       window.clearInterval(refreshInterval);
     };
   }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+    if (!selectedTrackedAddress) return;
+    const { id: addressId } = selectedTrackedAddress;
+    void listWalletRiskSignals(selectedTrackedAddress)
+      .then((signals) => {
+        if (!isCurrent) return;
+        setWalletRiskSignalResult({ addressId, signals });
+        setRiskSignalFailure((current) =>
+          current?.addressId === addressId ? null : current,
+        );
+      })
+      .catch((error: unknown) => {
+        if (!isCurrent) return;
+        setRiskSignalFailure({
+          addressId,
+          message:
+            error instanceof ApiRequestError
+              ? error.message
+              : "Could not load wallet risk signals. Try again.",
+        });
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedTrackedAddress, riskRefreshKey]);
 
   const loadTrackedAddresses = async () => {
     setAddressesError("");
@@ -725,6 +793,17 @@ function App() {
     } finally {
       setScreeningLoading(false);
     }
+  };
+
+  const refreshWalletRiskSignals = () => {
+    if (!selectedTrackedAddress) return;
+    setWalletRiskSignalResult((current) =>
+      current?.addressId === selectedTrackedAddress.id ? null : current,
+    );
+    setRiskSignalFailure((current) =>
+      current?.addressId === selectedTrackedAddress.id ? null : current,
+    );
+    setRiskRefreshKey((value) => value + 1);
   };
 
   const viewSavedHistory = async () => {
@@ -978,17 +1057,35 @@ function App() {
             </article>
             <article className="stat-card stat-signal">
               <div className="stat-label">
-                Highest exposure <Crosshair size={15} />
+                Selected wallet risk <Crosshair size={15} />
               </div>
               <div className="stat-value">
-                {DEMO_WALLET_ASSESSMENT.score}
-                <small className="score-suffix">/100</small>
-                <span className="signal-label">
-                  <i /> {DEMO_WALLET_ASSESSMENT.level}
-                </span>
+                {selectedTrackedAddress &&
+                !riskSignalsLoading &&
+                !riskSignalsError
+                  ? walletAssessment.score
+                  : "—"}
+                {selectedTrackedAddress &&
+                  !riskSignalsLoading &&
+                  !riskSignalsError && (
+                    <>
+                      <small className="score-suffix">/100</small>
+                      <span className="signal-label">
+                        <i /> {walletAssessment.level}
+                      </span>
+                    </>
+                  )}
               </div>
               <div className="stat-foot">
-                <span>3 signals · analyst review needed</span>
+                <span>
+                  {riskSignalsLoading
+                    ? "Loading selected wallet evidence"
+                    : riskSignalsError
+                      ? "Evidence could not be loaded"
+                      : selectedTrackedAddress
+                        ? `${walletAssessment.contributions.length} evidence records · model ${walletAssessment.modelVersion}`
+                        : "Select a saved wallet to view its score"}
+                </span>
                 <button
                   aria-label="Подробнее о сигналах риска"
                   onClick={() =>
@@ -1140,73 +1237,171 @@ function App() {
                   <span className="risk-icon">
                     <Crosshair size={16} />
                   </span>
-                  <h2>Risk signals</h2>
-                  <span className="demo-badge">DEMO MODEL</span>
-                </div>
-                <p>{DEMO_WALLET_ASSESSMENT.disclaimer}</p>
-              </div>
-              <button
-                className="button button-secondary"
-                onClick={() => setNotice("Открыта методика оценки риска")}
-              >
-                Scoring methodology <ExternalLink size={13} />
-              </button>
-            </div>
-            <div className="risk-content">
-              <div
-                className={`risk-score score-${DEMO_WALLET_ASSESSMENT.level}`}
-              >
-                <div
-                  className="score-ring"
-                  style={
-                    {
-                      "--score": `${DEMO_WALLET_ASSESSMENT.score}%`,
-                    } as CSSProperties
-                  }
-                >
-                  <span>
-                    {DEMO_WALLET_ASSESSMENT.score}
-                    <small>/100</small>
+                  <h2>Wallet risk assessment</h2>
+                  <span className="demo-badge">
+                    MODEL {walletAssessment.modelVersion}
                   </span>
                 </div>
-                <b>{DEMO_WALLET_ASSESSMENT.level} exposure</b>
-                <small>Example wallet · 0x7a3d…4c91</small>
+                <p>{walletAssessment.disclaimer}</p>
               </div>
-              <div className="risk-signal-list">
-                {DEMO_WALLET_ASSESSMENT.signals.map((signal) => (
-                  <article className="risk-signal" key={signal.id}>
-                    <span className={`signal-mark severity-${signal.severity}`}>
-                      <Activity size={14} />
-                    </span>
-                    <span className="signal-copy">
-                      <b>{signal.title}</b>
-                      <small>{signal.detail}</small>
-                      <span className="signal-meta">
-                        {signal.source} <i />{" "}
-                        {signal.hops === 0
-                          ? "Direct observation"
-                          : `${signal.hops} hop`}{" "}
-                        <i />{" "}
-                        {new Date(signal.observedAt).toLocaleDateString(
-                          "en-US",
-                          { month: "short", day: "numeric" },
-                        )}
-                      </span>
-                    </span>
-                    <span
-                      className={`severity-label severity-text-${signal.severity}`}
-                    >
-                      {signal.severity}
-                    </span>
-                  </article>
-                ))}
+              <div className="risk-heading-actions">
+                {selectedTrackedAddress && (
+                  <button
+                    className="button button-secondary"
+                    onClick={refreshWalletRiskSignals}
+                    disabled={riskSignalsLoading}
+                  >
+                    Refresh evidence
+                  </button>
+                )}
+                <button
+                  className="button button-secondary"
+                  onClick={() => setNotice("Открыта методика оценки риска")}
+                >
+                  Scoring methodology <ExternalLink size={13} />
+                </button>
               </div>
             </div>
+            {!selectedTrackedAddress ? (
+              <div className="address-state">
+                Save an address to view its analyst-entered risk evidence.
+              </div>
+            ) : riskSignalsLoading ? (
+              <div className="address-state" role="status">
+                Loading evidence for{" "}
+                {selectedTrackedAddress.label || selectedTrackedAddress.address}
+                …
+              </div>
+            ) : riskSignalsError ? (
+              <div className="address-state address-error" role="alert">
+                <span>{riskSignalsError}</span>
+                <button
+                  className="text-action"
+                  onClick={refreshWalletRiskSignals}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="risk-content">
+                  <div className={`risk-score score-${walletAssessment.level}`}>
+                    <div
+                      className="score-ring"
+                      style={
+                        {
+                          "--score": `${walletAssessment.score}%`,
+                        } as CSSProperties
+                      }
+                    >
+                      <span>
+                        {walletAssessment.score}
+                        <small>/100</small>
+                      </span>
+                    </div>
+                    <b>{walletAssessment.level} review priority</b>
+                    <small>
+                      {selectedTrackedAddress.label ||
+                        selectedTrackedAddress.address}
+                    </small>
+                  </div>
+                  <div className="risk-signal-list">
+                    {walletAssessment.contributions.length === 0 ? (
+                      <div className="address-state">
+                        No analyst-entered evidence is recorded for this
+                        address.
+                      </div>
+                    ) : (
+                      walletAssessment.contributions.map((item) => {
+                        const signal = item.signal;
+                        const sourceHref = safeExternalLink(
+                          signal.sourceReference,
+                        );
+                        return (
+                          <article className="risk-signal" key={signal.id}>
+                            <span
+                              className={`signal-mark severity-${signal.severity}`}
+                            >
+                              <Activity size={14} />
+                            </span>
+                            <span className="signal-copy">
+                              <b>{signal.title}</b>
+                              <small>{signal.detail}</small>
+                              <span className="signal-meta">
+                                {signal.source} <i />{" "}
+                                {signal.hops === 0
+                                  ? "Direct evidence"
+                                  : `${signal.hops} hop${signal.hops === 1 ? "" : "s"}`}{" "}
+                                <i />{" "}
+                                {new Date(signal.observedAt).toLocaleDateString(
+                                  "en-US",
+                                  { month: "short", day: "numeric" },
+                                )}
+                                {signal.sourceReference && (
+                                  <>
+                                    <i />{" "}
+                                    {sourceHref ? (
+                                      <a
+                                        href={sourceHref}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      >
+                                        Source record
+                                      </a>
+                                    ) : (
+                                      <span>Source reference on file</span>
+                                    )}
+                                  </>
+                                )}
+                              </span>
+                            </span>
+                            <span className="signal-contribution">
+                              <span
+                                className={`severity-label severity-text-${signal.severity}`}
+                              >
+                                {signal.severity}
+                              </span>
+                              <small>+{item.contribution.toFixed(1)} pts</small>
+                              <small>
+                                {item.baseWeight} ×{" "}
+                                {item.distanceFactor.toFixed(2)} hop ×{" "}
+                                {item.categoryFactor.toFixed(2)}{" "}
+                                {signal.category}
+                              </small>
+                            </span>
+                          </article>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+                <div className="risk-evidence-note">
+                  <span>
+                    {screeningResult?.status === "exact_match"
+                      ? "Exact OFAC match included. Review the source entry."
+                      : screeningResult?.status === "no_exact_match"
+                        ? "OFAC snapshot checked: no exact match. This does not lower the score or establish safety."
+                        : screeningResult?.status === "source_not_imported"
+                          ? "OFAC snapshot is unavailable locally; sanctions coverage is incomplete."
+                          : screeningResult?.status === "network_not_covered"
+                            ? "This network is not covered by the current OFAC address mapping."
+                            : "OFAC check has not been run for this address; sanctions evidence is not included."}
+                  </span>
+                  <button
+                    className="text-action"
+                    onClick={() => void screenSelectedAddress()}
+                    disabled={screeningLoading}
+                  >
+                    {screeningLoading ? "Checking…" : "Run OFAC check"}
+                  </button>
+                </div>
+              </>
+            )}
             <div className="risk-footnote">
               <ShieldCheck size={14} />
               <span>
-                Signals are source-attributed observations, not a finding of
-                illicit activity.
+                {walletAssessment.disclaimer} Freshness and provider reliability
+                are shown as context, not scored.
               </span>
               <button
                 onClick={() =>
