@@ -133,7 +133,7 @@ pub(crate) fn parse_blockscout_config(
         return Err(());
     }
     merge_legacy_fallbacks(&mut networks);
-    networks.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    networks.sort_by_key(|network| network.name.to_lowercase());
     Ok(networks)
 }
 
@@ -165,7 +165,7 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             api_base_url: None,
         },
     ];
-    networks.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    networks.sort_by_key(|network| network.name.to_lowercase());
     networks
 }
 
