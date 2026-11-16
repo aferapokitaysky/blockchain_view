@@ -36,7 +36,7 @@ The API supports creating and listing investigations, adding and listing tracked
 
 ## Bitcoin transaction sync
 
-Bitcoin sync is on demand only: call the sync endpoint for a tracked Bitcoin address, then read its stored results from the transfers endpoint. The provider is Blockstream Esplora. EVM transaction sync is unavailable.
+Bitcoin sync is on demand only: call the sync endpoint for a tracked Bitcoin address, then read its stored results from the transfers endpoint. The provider is Blockstream Esplora; set `BITCOIN_ESPLORA_URL` to use another compatible endpoint (default: `https://blockstream.info/api`). EVM transaction sync is unavailable.
 
 Each sync fetches the initial address-history page, which can include current unconfirmed mempool transactions, then paginates confirmed history up to 20 pages total (up to 500 confirmed transactions). Results contain address-level input value spent and output value received per transaction, both in satoshis; these are totals, not a net balance change. The transfers endpoint returns up to 500 most recent stored records for that address. No background polling or continuous monitoring runs.
 
