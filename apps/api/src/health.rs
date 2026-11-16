@@ -11,6 +11,8 @@ use tracing::warn;
 pub struct HealthState {
     pub database: PgPool,
     pub redis: RedisClient,
+    pub http_client: reqwest::Client,
+    pub bitcoin_esplora_url: String,
 }
 
 #[cfg(test)]
@@ -21,6 +23,8 @@ pub(crate) fn unavailable_state() -> HealthState {
             .expect("тестовый адрес Postgres должен разбираться"),
         redis: RedisClient::open("redis://127.0.0.1:1/")
             .expect("тестовый адрес Redis должен разбираться"),
+        http_client: reqwest::Client::new(),
+        bitcoin_esplora_url: "http://127.0.0.1:1/api".into(),
     }
 }
 
