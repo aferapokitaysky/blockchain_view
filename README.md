@@ -2,7 +2,7 @@
 
 Open-source workspace for exploring how funds move between blockchain addresses.
 
-> **Project status: early prototype.** The overview graph, wallet labels, and balances remain illustrative demo data. The recent-transactions table reads persisted observations for saved wallets and stays empty until history is synced through a configured provider. The risk panel loads analyst-entered signals for the selected saved address and may include an exact OFAC SDN match after an explicit local snapshot check; its versioned score is provisional, not a legal conclusion or complete compliance check. Saved-wallet history sync is on demand, not continuous. The EVM graph uses exact saved sender/recipient fields and does not infer Bitcoin counterparties. EVM history support is limited to Ethereum, Base, and Arbitrum One.
+> **Project status: early prototype.** The overview graph, wallet labels, and balances remain illustrative demo data. The recent-transactions table reads persisted observations for saved wallets and stays empty until history is synced through a configured provider. The risk panel loads analyst-entered signals for the selected saved address and may include an exact OFAC SDN match after an explicit local snapshot check; its versioned score is provisional, not a legal conclusion or complete compliance check. Manual sync is available in the saved-wallet panel. `docker compose up` also starts `sync-worker`, which periodically refreshes tracked Bitcoin and supported EVM addresses, targeting five minutes per address when provider capacity allows; this is bounded history polling, not real-time or full mempool monitoring. The EVM transfer graph uses exact saved sender/recipient fields and does not infer Bitcoin counterparties. Supported EVM history networks are Ethereum, Base, and Arbitrum One.
 
 **Documentation:** [Русский](README.ru.md) · [Українська](README.uk.md) · [English](README.md)
 
@@ -25,9 +25,9 @@ The interface prototype includes a demo overview graph and an evidence-based EVM
 - **Frontend:** React, TypeScript, Vite, and Tailwind CSS.
 - **API:** local-only Rust service built with Axum.
 - **Persistent storage:** PostgreSQL, with an initial migration for investigations, tracked addresses, and risk signals.
-- **Cache and coordination:** Redis, checked by the API readiness endpoint.
+- **Queue and coordination:** Redis Streams for the background sync worker; Redis is also checked by the API readiness endpoint.
 
-The API supports creating and listing investigations, adding and listing tracked addresses, manually syncing Bitcoin and selected EVM transaction history, investigation-scoped CRUD for analyst-entered risk signals, and exact-address screening against an imported OFAC SDN snapshot. The recent-transactions table shows persisted observations. The risk panel loads signals for the selected saved wallet and shows the versioned provisional score with per-signal contributions; an exact OFAC match contributes direct sanctions evidence only after an explicit check, while a non-match never lowers the score. The direct transfer-links view builds EVM connections from persisted sender/recipient fields and labels untracked counterparties. Bitcoin inputs and outputs do not identify counterparties, so they are excluded from that graph. The overview graph and balances remain demo data. The API has no authentication and is intended for local development only. The OFAC snapshot is refreshed manually; no commercial screening provider is connected.
+The API supports creating and listing investigations, adding and listing tracked addresses, manually syncing Bitcoin and selected EVM transaction history, investigation-scoped CRUD for analyst-entered risk signals, and exact-address screening against an imported OFAC SDN snapshot. The recent-transactions table shows persisted observations. The risk panel loads signals for the selected saved wallet and shows the versioned provisional score with per-signal contributions; an exact OFAC match contributes direct sanctions evidence only after an explicit check, while a non-match never lowers the score. The Compose worker refreshes tracked addresses through the same bounded provider adapters; see [continuous sync](docs/en/continuous-sync.md). The direct transfer-links view builds EVM connections from persisted sender/recipient fields. Bitcoin inputs and outputs do not identify counterparties, so they are excluded from that graph. The overview graph and balances remain demo data. The API has no authentication and is intended for local development only. The OFAC snapshot is refreshed manually; no commercial screening provider is connected.
 
 - `GET` / `POST` `/api/v1/investigations`
 - `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses`
@@ -39,11 +39,11 @@ The API supports creating and listing investigations, adding and listing tracked
 
 See [OFAC screening setup and coverage](docs/en/ofac-screening.md).
 
-## On-demand transaction sync
+## Transaction history sync
 
-History sync is on demand only. Bitcoin uses Blockstream Esplora. EVM uses Blockscout REST v2 for Ethereum (chain ID 1), Base (8453), and Arbitrum One (42161); other EVM networks are unsupported. Configure `BLOCKSCOUT_BASE_URL` (default `https://api.blockscout.com`) and optionally `BLOCKSCOUT_API_KEY` (sent as a bearer token; provider access may require a key). No credentials are stored in the repository.
+Manual history sync remains available. The Compose worker periodically refreshes all tracked addresses, with a target five-minute interval when the worker and provider have enough capacity. Bitcoin uses Blockstream Esplora. EVM uses Blockscout REST v2 for Ethereum (chain ID 1), Base (8453), and Arbitrum One (42161); other EVM networks are unsupported. Configure `BLOCKSCOUT_BASE_URL` (default `https://api.blockscout.com`) and optionally `BLOCKSCOUT_API_KEY` (sent as a bearer token; provider access may require a key). No credentials are stored in the repository. See [continuous sync details](docs/en/continuous-sync.md).
 
-Bitcoin sync keeps its existing bounded Esplora behavior. EVM sync fetches normal native transactions, successful internal native-value transfers, and ERC-20 transfer events in parallel. Raw integer amounts, token contract, optional decimals, event index, endpoints, time, block, and source host are stored. Each EVM stream is capped at 10 pages of 50 rows; `may_have_more_history` indicates when the provider exposed another page at that cap. This is an on-demand provider view, not a complete index: other EVM networks, token standards, and provider omissions are outside coverage. Multiple events in one transaction remain separate. The transfers endpoint returns up to 500 recent records. No background polling runs.
+Bitcoin sync keeps its existing bounded Esplora behavior. EVM sync fetches normal native transactions, successful internal native-value transfers, and ERC-20 transfer events in parallel. Raw integer amounts, token contract, optional decimals, event index, endpoints, time, block, and source host are stored. Each EVM stream is capped at 10 pages of 50 rows; `may_have_more_history` indicates when the provider exposed another page at that cap. This bounded provider view is not a complete index: other EVM networks, token standards, and provider omissions are outside coverage. Multiple events in one transaction remain separate. The transfers endpoint returns up to 500 recent records. The background worker polls history; it does not stream every block or mempool event.
 
 ## Run the local API
 
@@ -100,6 +100,7 @@ cargo test --manifest-path apps/api/Cargo.toml --all-features
 - [Risk model](docs/en/risk-model.md)
 - [Risk signal API](docs/en/risk-signals-api.md)
 - [OFAC address screening](docs/en/ofac-screening.md)
+- [Continuous wallet sync](docs/en/continuous-sync.md)
 - [Russian architecture](docs/ru/architecture.md) · [Russian risk model](docs/ru/risk-model.md)
 - [Russian risk signal API](docs/ru/risk-signals-api.md)
 - [Ukrainian architecture](docs/uk/architecture.md) · [Ukrainian risk model](docs/uk/risk-model.md)
@@ -108,7 +109,7 @@ cargo test --manifest-path apps/api/Cargo.toml --all-features
 
 ## Data sources and licensing
 
-Bitcoin and selected EVM address sync read history from Blockstream Esplora and Blockscout on demand. This provides blockchain transaction data, not identity attribution or comprehensive wallet-risk coverage. An optional local import supports exact address checks against the official OFAC SDN snapshot for Bitcoin and Ethereum; it refreshes only when an operator runs the importer. The API does not use OFAC's web search interface for automated queries ([OFAC FAQ](https://ofac.treasury.gov/faqs/287)). Commercial blockchain analytics require a separately licensed provider account.
+Bitcoin and selected EVM address sync read history from Blockstream Esplora and Blockscout on demand and through the Compose background worker. This provides blockchain transaction data, not identity attribution or comprehensive wallet-risk coverage. An optional local import supports exact address checks against the official OFAC SDN snapshot for Bitcoin and Ethereum; it refreshes only when an operator runs the importer. The API does not use OFAC's web search interface for automated queries ([OFAC FAQ](https://ofac.treasury.gov/faqs/287)). Commercial blockchain analytics require a separately licensed provider account.
 
 ## Contributing
 
