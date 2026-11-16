@@ -231,19 +231,8 @@
 .usage-head span:last-child {
   color: #81d9b3;
 }
-.usage-track {
-  height: 3px;
-  background: #26312c;
-  border-radius: 4px;
-  margin: 9px 0 7px;
-  overflow: hidden;
-}
-.usage-track i {
-  display: block;
-  width: 68%;
-  height: 100%;
-  background: #55c697;
-  border-radius: 4px;
+.usage-head .source-count {
+  color: #d8ad6c;
 }
 .usage-card p {
   font-size: 9px;
@@ -326,14 +315,24 @@
   font-size: 10px;
   margin-right: 7px;
 }
-.live-status i,
-.live-dot {
+.live-status i {
   height: 6px;
   width: 6px;
   border-radius: 50%;
   background: #64d7a8;
   box-shadow: 0 0 8px #64d7a866;
   animation: status-pulse 2.8s ease-in-out infinite;
+}
+.live-status.api-offline {
+  color: #d88c83;
+}
+.live-status.api-offline i {
+  background: #db776d;
+  box-shadow: 0 0 8px #db776d66;
+}
+.live-status.api-checking i {
+  background: #d2aa62;
+  box-shadow: 0 0 8px #d2aa6266;
 }
 .icon-button {
   width: 28px;
@@ -401,6 +400,10 @@
   background: #65d6ad;
   border-radius: 50%;
   box-shadow: 0 0 10px #65d6ad77;
+}
+.eyebrow-dot.demo-dot {
+  background: #d8ad6c;
+  box-shadow: 0 0 8px #d8ad6c66;
 }
 .page-heading h1 {
   margin: 0;
@@ -891,10 +894,6 @@
   gap: 6px;
   color: #829088;
   font-size: 9px;
-}
-.graph-attribution .live-dot {
-  width: 5px;
-  height: 5px;
 }
 .graph-footer {
   min-height: 52px;
@@ -1554,6 +1553,24 @@ select.network-detected {
 .modal-note svg {
   color: #6bc99d;
 }
+.form-error {
+  margin: 12px 0 0;
+  padding: 9px 10px;
+  border: 1px solid #673b36;
+  border-radius: 6px;
+  background: #2c1c1a;
+  color: #e5a097;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.button-spinner {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #284d3d;
+  border-top-color: #0c2a1d;
+  border-radius: 50%;
+  animation: button-spin 0.7s linear infinite;
+}
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1639,6 +1656,11 @@ select.network-detected {
   }
   50% {
     opacity: 0.48;
+  }
+}
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 @keyframes network-mark-drift {
