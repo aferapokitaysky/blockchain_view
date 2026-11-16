@@ -978,6 +978,66 @@
 .activity-panel {
   margin-top: 13px;
 }
+.saved-addresses-panel {
+  margin-top: 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #111817;
+  overflow: hidden;
+}
+.address-management,
+.address-state {
+  padding: 14px 16px;
+}
+.address-state {
+  margin: 0;
+  color: #9aa89f;
+  font-size: 11px;
+}
+.address-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #e5a18f;
+}
+.address-picker-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #9aa89f;
+  font-size: 10px;
+}
+.address-management select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #304038;
+  border-radius: 6px;
+  background: #151e1a;
+  color: #dce6df;
+  font: inherit;
+  font-size: 11px;
+}
+.address-management select:focus-visible,
+.address-management button:focus-visible {
+  outline: 2px solid #80cda6;
+  outline-offset: 2px;
+}
+.address-management-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.address-management-actions .button {
+  min-height: 34px;
+}
+.address-note {
+  margin: 9px 0 0;
+  color: #84928a;
+  font-size: 10px;
+  line-height: 1.5;
+}
 .activity-head {
   height: 58px;
   padding: 12px 15px;
@@ -1397,6 +1457,19 @@ tbody tr:hover {
   max-height: min(88vh, 760px);
   display: flex;
   flex-direction: column;
+}
+@media (max-width: 560px) {
+  .address-management-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .address-management-actions .button {
+    width: 100%;
+    justify-content: center;
+  }
+  .address-management select {
+    text-overflow: ellipsis;
+  }
 }
 .history-modal > p {
   line-height: 1.55;
