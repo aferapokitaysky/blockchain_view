@@ -5,13 +5,17 @@ import "./WalletFlowGraph.css";
 
 type WalletFlowGraphProps = {
   histories: WalletHistory[];
+  networkNames?: Record<string, string>;
 };
 
 function shortAddress(address: string): string {
   return `${address.slice(0, 8)}…${address.slice(-6)}`;
 }
 
-export function WalletFlowGraph({ histories }: WalletFlowGraphProps) {
+export function WalletFlowGraph({
+  histories,
+  networkNames = {},
+}: WalletFlowGraphProps) {
   const graph = useMemo(() => buildWalletFlowGraph(histories), [histories]);
   const [selectedNode, setSelectedNode] = useState("");
   const [maxDepth, setMaxDepth] = useState<1 | 2 | 3>(2);
@@ -175,7 +179,7 @@ export function WalletFlowGraph({ histories }: WalletFlowGraphProps) {
                     transform={`translate(${node.x} ${node.y})`}
                     role="button"
                     tabIndex={0}
-                    aria-label={`${node.tracked ? "Saved address" : "Counterparty"}: ${node.address} on ${node.network}`}
+                    aria-label={`${node.tracked ? "Saved address" : "Counterparty"}: ${node.address} on ${networkNames[node.network] ?? node.network}`}
                     aria-pressed={selectedNode === node.id}
                     onClick={() =>
                       setSelectedNode((current) =>
@@ -210,7 +214,7 @@ export function WalletFlowGraph({ histories }: WalletFlowGraphProps) {
               <div>
                 <span>
                   {focusedNode.tracked ? "Saved address" : "Counterparty"} ·{" "}
-                  {focusedNode.network}
+                  {networkNames[focusedNode.network] ?? focusedNode.network}
                 </span>
                 <code>{focusedNode.address}</code>
               </div>

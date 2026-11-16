@@ -39,13 +39,21 @@ import { buildWalletAssessment } from "./features/risk/scoreWallet";
 import {
   detectAddressNetwork,
   type AddressDetection,
-  type SupportedNetwork,
 } from "./features/networks/detectAddressNetwork";
+import {
+  getNetworkName,
+  getNetworkSyncAvailability,
+  hasAddressScreeningMapping,
+  isEvmNetworkId,
+  LEGACY_NETWORKS,
+  type NetworkCatalog,
+} from "./features/networks/networkCatalog";
 import {
   ApiRequestError,
   checkApiHealth,
   listTrackedWalletHistories,
   listTrackedWallets,
+  listSupportedNetworks,
   listWalletHistory,
   listWalletRiskSignals,
   screenWalletAddress,
@@ -65,7 +73,7 @@ import {
 } from "./features/investigations/transactionFeed";
 import "./App.css";
 
-type Network = "Ethereum" | "Bitcoin" | "Base" | "Arbitrum";
+type Network = string;
 const TRANSACTIONS_PER_PAGE = 50;
 type GraphNode = {
   id: string;
@@ -194,14 +202,27 @@ const edges = [
   ["cove", "delta", "0.13 BTC"],
 ] as const;
 
-const networkMeta: Record<Network, { color: string }> = {
+const networkMeta: Record<string, { color: string }> = {
   Ethereum: { color: "#a98cff" },
+  ethereum: { color: "#a98cff" },
   Bitcoin: { color: "#f2a84a" },
+  bitcoin: { color: "#f2a84a" },
   Base: { color: "#5595ff" },
+  base: { color: "#5595ff" },
   Arbitrum: { color: "#64c8fa" },
+  "Arbitrum One": { color: "#64c8fa" },
+  arbitrum: { color: "#64c8fa" },
 };
 
+function networkColor(network: string): string {
+  return (
+    networkMeta[network]?.color ??
+    (isEvmNetworkId(network) ? "#7aabff" : "#a3b0a7")
+  );
+}
+
 function NetworkShape({ network }: { network: Network }) {
+  const normalizedNetwork = network.toLowerCase();
   return (
     <g
       fill="none"
@@ -210,28 +231,35 @@ function NetworkShape({ network }: { network: Network }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      {network === "Bitcoin" && (
+      {normalizedNetwork === "bitcoin" && (
         <>
           <circle cx="12" cy="12" r="9" />
           <path d="M10 6.5v11m4-11v11M8.8 9h5a2 2 0 0 1 0 4h-5m0 0h5.7a2 2 0 0 1 0 4H8.8" />
         </>
       )}
-      {network === "Ethereum" && (
+      {normalizedNetwork === "ethereum" && (
         <>
           <path d="m12 2.5 6.2 9.3L12 15l-6.2-3.2L12 2.5Z" />
           <path d="m5.8 13.1 6.2 3.2 6.2-3.2L12 21.5l-6.2-8.4Z" />
         </>
       )}
-      {network === "Base" && (
+      {normalizedNetwork === "base" && (
         <>
           <circle cx="12" cy="12" r="9" />
           <path d="M20.5 9.5H12a2.5 2.5 0 1 0 0 5h8.5" />
         </>
       )}
-      {network === "Arbitrum" && (
+      {(normalizedNetwork === "arbitrum" ||
+        normalizedNetwork === "arbitrum one") && (
         <>
           <path d="m12 2.5 8 4.6v9.8l-8 4.6-8-4.6V7.1l8-4.6Z" />
           <path d="m8 8 4 8m4-8-4 8m-1.8-2.4h3.6" />
+        </>
+      )}
+      {!networkMeta[network] && (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M7 12h10M12 7v10" />
         </>
       )}
     </g>
@@ -242,7 +270,7 @@ function NetworkMark({ network }: { network: Network }) {
   return (
     <span
       className="network-mark"
-      style={{ "--network": networkMeta[network].color } as CSSProperties}
+      style={{ "--network": networkColor(network) } as CSSProperties}
       aria-label={network}
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -370,7 +398,7 @@ function TransferGraph({
                 className="node-core"
                 style={
                   {
-                    "--node-color": networkMeta[node.network].color,
+                    "--node-color": networkColor(node.network),
                   } as CSSProperties
                 }
                 filter={node.central ? "url(#node-glow)" : undefined}
@@ -380,7 +408,7 @@ function TransferGraph({
                 className="node-mark"
                 style={
                   {
-                    "--node-color": networkMeta[node.network].color,
+                    "--node-color": networkColor(node.network),
                   } as CSSProperties
                 }
               >
@@ -447,7 +475,13 @@ function App() {
   const [showAdd, setShowAdd] = useState(false);
   const [query, setQuery] = useState("");
   const [walletLabel, setWalletLabel] = useState("");
-  const [networkChoice, setNetworkChoice] = useState<SupportedNetwork | "">("");
+  const [networkChoice, setNetworkChoice] = useState("");
+  const [networkCatalog, setNetworkCatalog] = useState<NetworkCatalog>({
+    networks: LEGACY_NETWORKS,
+  });
+  const [networkCatalogLoading, setNetworkCatalogLoading] = useState(true);
+  const [networkCatalogError, setNetworkCatalogError] = useState("");
+  const [networkCatalogRetry, setNetworkCatalogRetry] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">(
@@ -500,6 +534,30 @@ function App() {
   const [activityPage, setActivityPage] = useState(0);
   const [activeTab, setActiveTab] = useState("Overview");
   const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[0];
+  const networkNames = useMemo(
+    () =>
+      Object.fromEntries(
+        networkCatalog.networks.map(({ id, name }) => [id, name]),
+      ),
+    [networkCatalog.networks],
+  );
+  const evmNetworks = useMemo(
+    () =>
+      networkCatalog.networks
+        .filter(({ family }) => family === "evm")
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [networkCatalog.networks],
+  );
+  const networkFilterOptions = useMemo(() => {
+    const networkIds = new Set([
+      ...LEGACY_NETWORKS.map(({ id }) => id),
+      ...trackedAddresses.map(({ network }) => network.toLowerCase()),
+    ]);
+    return [...networkIds].map((id) => ({
+      id,
+      name: getNetworkName(id, networkCatalog.networks),
+    }));
+  }, [trackedAddresses, networkCatalog.networks]);
   const selectedTrackedAddress = trackedAddresses.find(
     (address) => address.id === selectedAddressId,
   );
@@ -526,12 +584,12 @@ function App() {
     [activityHistories, activityStatus, selectedTrackedAddress],
   );
   const transactionFeed = useMemo(
-    () => buildTransactionFeed(activityHistories),
-    [activityHistories],
+    () => buildTransactionFeed(activityHistories, networkNames),
+    [activityHistories, networkNames],
   );
   const visibleTransfers = transactionFeed.filter(
     (transfer) =>
-      activeNetwork === "All networks" || transfer.network === activeNetwork,
+      activeNetwork === "All networks" || transfer.networkId === activeNetwork,
   );
   const activityPageCount = Math.ceil(
     visibleTransfers.length / TRANSACTIONS_PER_PAGE,
@@ -563,6 +621,40 @@ function App() {
       isCurrent = false;
     };
   }, [query]);
+
+  useEffect(() => {
+    let isCurrent = true;
+    void listSupportedNetworks()
+      .then((catalog) => {
+        if (!isCurrent) return;
+        const mergedById = new Map(
+          LEGACY_NETWORKS.map((network) => [network.id, network]),
+        );
+        catalog.networks.forEach((network) =>
+          mergedById.set(network.id, network),
+        );
+        setNetworkCatalog({
+          ...catalog,
+          networks: [...mergedById.values()],
+        });
+        setNetworkCatalogError("");
+      })
+      .catch((error: unknown) => {
+        if (!isCurrent) return;
+        setNetworkCatalog({ networks: LEGACY_NETWORKS });
+        setNetworkCatalogError(
+          error instanceof ApiRequestError
+            ? error.message
+            : "The network catalog response was invalid.",
+        );
+      })
+      .finally(() => {
+        if (isCurrent) setNetworkCatalogLoading(false);
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [networkCatalogRetry]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -787,7 +879,7 @@ function App() {
         ? " The provider page limit was reached; older history may be missing."
         : "";
       setNotice(
-        `Saved ${result.fetched} ${selectedTrackedAddress.network} observations from ${result.provider}.${coverage}`,
+        `Saved ${result.fetched} ${getNetworkName(selectedTrackedAddress.network, networkCatalog.networks)} observations from ${result.provider}.${coverage}`,
       );
     } catch (error) {
       setHistoryError(
@@ -803,7 +895,7 @@ function App() {
   const buildWalletConnections = async () => {
     if (flowLoading) return;
     const evmAddresses = trackedAddresses.filter((address) =>
-      ["ethereum", "base", "arbitrum"].includes(address.network),
+      isEvmNetworkId(address.network),
     );
     setFlowLoading(true);
     setFlowError("");
@@ -822,6 +914,13 @@ function App() {
 
   const screenSelectedAddress = async () => {
     if (!selectedTrackedAddress || screeningLoading) return;
+    if (!hasAddressScreeningMapping(selectedTrackedAddress.network)) {
+      setScreeningError(
+        "Exact-address screening is not available for this network yet.",
+      );
+      setScreeningResult(null);
+      return;
+    }
     setScreeningLoading(true);
     setScreeningError("");
     setScreeningResult(null);
@@ -937,24 +1036,20 @@ function App() {
           </button>
         </div>
         <div className="network-list">
-          {(["Ethereum", "Bitcoin", "Base", "Arbitrum"] as Network[]).map(
-            (network) => (
-              <button
-                key={network}
-                className={`network-item ${activeNetwork === network ? "active" : ""}`}
-                onClick={() => {
-                  setActivityPage(0);
-                  setActiveNetwork(
-                    activeNetwork === network ? "All networks" : network,
-                  );
-                }}
-              >
-                <NetworkMark network={network} />
-                <span>{network}</span>
-                <i />
-              </button>
-            ),
-          )}
+          {networkFilterOptions.map(({ id, name }) => (
+            <button
+              key={id}
+              className={`network-item ${activeNetwork === id ? "active" : ""}`}
+              onClick={() => {
+                setActivityPage(0);
+                setActiveNetwork(activeNetwork === id ? "All networks" : id);
+              }}
+            >
+              <NetworkMark network={name} />
+              <span>{name}</span>
+              <i />
+            </button>
+          ))}
         </div>
         <div className="sidebar-spacer" />
         <div className="usage-card">
@@ -1162,13 +1257,15 @@ function App() {
                   onClick={() =>
                     setActiveNetwork(
                       activeNetwork === "All networks"
-                        ? "Ethereum"
+                        ? "ethereum"
                         : "All networks",
                     )
                   }
                 >
                   <Blocks size={15} />
-                  {activeNetwork}
+                  {activeNetwork === "All networks"
+                    ? activeNetwork
+                    : getNetworkName(activeNetwork, networkCatalog.networks)}
                   <ChevronDown size={14} />
                 </button>
                 <button className="select-control time-control">
@@ -1436,12 +1533,23 @@ function App() {
                           ? "OFAC snapshot is unavailable locally; sanctions coverage is incomplete."
                           : screeningResult?.status === "network_not_covered"
                             ? "This network is not covered by the current OFAC address mapping."
-                            : "OFAC check has not been run for this address; sanctions evidence is not included."}
+                            : selectedTrackedAddress &&
+                                !hasAddressScreeningMapping(
+                                  selectedTrackedAddress.network,
+                                )
+                              ? "Exact-address screening is not mapped for this network; no screening result is included."
+                              : "OFAC check has not been run for this address; sanctions evidence is not included."}
                   </span>
                   <button
                     className="text-action"
                     onClick={() => void screenSelectedAddress()}
-                    disabled={screeningLoading}
+                    disabled={
+                      screeningLoading ||
+                      !selectedTrackedAddress ||
+                      !hasAddressScreeningMapping(
+                        selectedTrackedAddress.network,
+                      )
+                    }
                   >
                     {screeningLoading ? "Checking…" : "Run OFAC check"}
                   </button>
@@ -1537,7 +1645,9 @@ function App() {
                   {trackedAddresses.map((address) => (
                     <option key={address.id} value={address.id}>
                       {address.label ? `${address.label} · ` : ""}
-                      {address.address} ({address.network})
+                      {address.address} (
+                      {getNetworkName(address.network, networkCatalog.networks)}
+                      )
                     </option>
                   ))}
                 </select>
@@ -1552,7 +1662,14 @@ function App() {
                   <button
                     className="button button-primary"
                     onClick={() => void syncSavedAddress()}
-                    disabled={!selectedTrackedAddress || isSyncing}
+                    disabled={
+                      !selectedTrackedAddress ||
+                      isSyncing ||
+                      getNetworkSyncAvailability(
+                        selectedTrackedAddress.network,
+                        networkCatalog,
+                      ) === false
+                    }
                   >
                     {isSyncing ? "Syncing…" : "Sync wallet history"}
                   </button>
@@ -1560,7 +1677,13 @@ function App() {
                 <p className="address-note">
                   {selectedTrackedAddress?.network === "bitcoin"
                     ? "Saved history is loaded on demand. Sync requests Bitcoin data from the configured Esplora provider."
-                    : "Saved history is loaded on demand from Blockscout. Coverage is bounded to Ethereum, Base and Arbitrum One."}
+                    : selectedTrackedAddress &&
+                        getNetworkSyncAvailability(
+                          selectedTrackedAddress.network,
+                          networkCatalog,
+                        ) === false
+                      ? "History sync is not configured for this network. Existing saved observations remain available."
+                      : `Saved history is loaded on demand from the configured provider. Network: ${selectedTrackedAddress ? getNetworkName(selectedTrackedAddress.network, networkCatalog.networks) : "—"}.`}
                 </p>
                 {historyError && (
                   <div className="address-state address-error" role="alert">
@@ -1579,14 +1702,19 @@ function App() {
               <div>
                 <strong>OFAC SDN address check</strong>
                 <p>
-                  Exact match against the locally imported list snapshot. It
-                  does not check indirect exposure.
+                  Exact checks use the local list snapshot and currently map
+                  Bitcoin and Ethereum addresses. Indirect exposure is not
+                  checked.
                 </p>
               </div>
               <button
                 className="button button-secondary"
                 onClick={() => void screenSelectedAddress()}
-                disabled={!selectedTrackedAddress || screeningLoading}
+                disabled={
+                  !selectedTrackedAddress ||
+                  screeningLoading ||
+                  !hasAddressScreeningMapping(selectedTrackedAddress.network)
+                }
               >
                 {screeningLoading ? "Checking address…" : "Check address"}
               </button>
@@ -1660,7 +1788,7 @@ function App() {
                   flowLoading ||
                   addressesLoading ||
                   !trackedAddresses.some((address) =>
-                    ["ethereum", "base", "arbitrum"].includes(address.network),
+                    isEvmNetworkId(address.network),
                   )
                 }
               >
@@ -1678,7 +1806,12 @@ function App() {
                 </button>
               </div>
             )}
-            {flowHistories && <WalletFlowGraph histories={flowHistories} />}
+            {flowHistories && (
+              <WalletFlowGraph
+                histories={flowHistories}
+                networkNames={networkNames}
+              />
+            )}
           </section>
 
           <section className="activity-panel">
@@ -2016,7 +2149,7 @@ function App() {
                 </span>
                 {addressDetection.status === "detected" && (
                   <span className="network-detected">
-                    <NetworkMark network="Bitcoin" /> Bitcoin mainnet
+                    <NetworkMark network="bitcoin" /> Bitcoin mainnet
                   </span>
                 )}
                 {addressDetection.status === "ambiguous" && (
@@ -2026,21 +2159,72 @@ function App() {
                     aria-label="Select EVM network"
                     value={networkChoice}
                     onChange={(event) => {
-                      setNetworkChoice(event.target.value as SupportedNetwork);
+                      setNetworkChoice(event.target.value);
                       setFormError("");
                     }}
                     required
                     disabled={isSubmitting}
                   >
                     <option value="">Select network</option>
-                    {addressDetection.candidates.map((network) => (
-                      <option key={network} value={network}>
-                        {network}
+                    {evmNetworks.map((network) => (
+                      <option key={network.id} value={network.id}>
+                        {network.name} · {network.native_asset} · chain{" "}
+                        {network.chain_id}
                       </option>
                     ))}
                   </select>
                 )}
               </div>
+              {networkCatalogLoading && (
+                <p className="network-catalog-state" role="status">
+                  Loading supported networks…
+                </p>
+              )}
+              {networkCatalogError && (
+                <div
+                  className="network-catalog-state network-catalog-error"
+                  role="alert"
+                >
+                  <span>
+                    {networkCatalogError} Built-in networks remain available.
+                  </span>
+                  <button
+                    type="button"
+                    className="text-action"
+                    onClick={() => {
+                      setNetworkCatalogLoading(true);
+                      setNetworkCatalogError("");
+                      setNetworkCatalogRetry((value) => value + 1);
+                    }}
+                    disabled={networkCatalogLoading}
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+              {addressDetection.status === "ambiguous" &&
+                !networkCatalogLoading &&
+                evmNetworks.length === 0 && (
+                  <p className="network-catalog-state" role="status">
+                    No EVM networks are available in the catalog.
+                  </p>
+                )}
+              {networkChoice &&
+                getNetworkSyncAvailability(networkChoice, networkCatalog) ===
+                  false && (
+                  <p className="network-catalog-state" role="status">
+                    History sync is not configured for this network. You can
+                    still track the address.
+                  </p>
+                )}
+              {networkChoice &&
+                getNetworkSyncAvailability(networkChoice, networkCatalog) ===
+                  true && (
+                  <p className="network-catalog-state" role="status">
+                    A provider endpoint is configured. Requests can still be
+                    rate-limited or unavailable.
+                  </p>
+                )}
               <label htmlFor="wallet-label">
                 Label <span>Optional</span>
               </label>

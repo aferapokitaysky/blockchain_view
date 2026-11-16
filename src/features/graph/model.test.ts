@@ -66,6 +66,32 @@ describe("wallet flow graph", () => {
     ]);
   });
 
+  it("includes catalogued EVM chain ids and keeps edges isolated by chain", () => {
+    const chainTen = {
+      address: { ...trackedAddress, network: "eip155:10" },
+      transfers: [transfer({ network: "eip155:10" })],
+    } as unknown as WalletHistory;
+    const chainTwenty = {
+      address: { ...trackedAddress, network: "eip155:20" },
+      transfers: [
+        transfer({
+          id: "event-chain-20",
+          network: "eip155:20",
+        }),
+      ],
+    } as unknown as WalletHistory;
+
+    const graph = buildWalletFlowGraph([chainTen, chainTwenty]);
+
+    expect(graph.edges).toHaveLength(2);
+    expect(graph.nodes.map(({ id }) => id)).toContain(
+      `eip155:10:${trackedAddress.address}`,
+    );
+    expect(graph.nodes.map(({ id }) => id)).toContain(
+      `eip155:20:${trackedAddress.address}`,
+    );
+  });
+
   it("deduplicates the same event observed from both tracked endpoints", () => {
     const reverseHistory = {
       address: {

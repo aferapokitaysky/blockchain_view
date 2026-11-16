@@ -3,6 +3,7 @@ import type {
   TrackedAddress,
   WalletHistory,
 } from "../investigations/api";
+import { isEvmNetworkId } from "../networks/networkCatalog";
 
 const MAX_RECORDS = 10_000;
 const MAX_EDGES = 400;
@@ -43,8 +44,6 @@ export type ObservedPathAnalysis = {
   paths: Array<{ targetId: string; depth: number; edgeIds: string[] }>;
   pathEdgeIds: Set<string>;
 };
-
-const evmNetworks = new Set(["ethereum", "base", "arbitrum"]);
 
 function addressKey(network: string, address: string): string {
   return `${network.toLowerCase()}:${address.toLowerCase()}`;
@@ -89,7 +88,7 @@ export function buildWalletFlowGraph(
   let truncated = false;
   for (const { transfers } of histories) {
     for (const transfer of transfers) {
-      if (!evmNetworks.has(transfer.network.toLowerCase())) continue;
+      if (!isEvmNetworkId(transfer.network)) continue;
       if (!transfer.from_address || !transfer.to_address) continue;
       const key = eventKey(transfer);
       if (!uniqueEvents.has(key)) {
