@@ -4,6 +4,7 @@ const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8080"
 ).replace(/\/$/, "");
 const REQUEST_TIMEOUT_MS = 8_000;
+const SYNC_TIMEOUT_MS = 260_000;
 
 type Investigation = {
   id: string;
@@ -19,6 +20,15 @@ export type TrackedAddress = {
   created_at: string;
 };
 
+export type SyncResult = {
+  provider: string;
+  fetched: number;
+  saved: number;
+  pages: number;
+  may_have_more_history: boolean;
+  observed_at: string;
+};
+
 export class ApiRequestError extends Error {
   readonly status: number;
 
@@ -29,12 +39,13 @@ export class ApiRequestError extends Error {
   }
 }
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestJson<T>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<T> {
   const controller = new AbortController();
-  const timeout = globalThis.setTimeout(
-    () => controller.abort(),
-    REQUEST_TIMEOUT_MS,
-  );
+  const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -56,6 +67,12 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
       if (response.status === 422) {
         throw new ApiRequestError(
           "The API rejected this address or label. Check the details and try again.",
+          response.status,
+        );
+      }
+      if (response.status === 502) {
+        throw new ApiRequestError(
+          "The blockchain data provider is unavailable. Try again later.",
           response.status,
         );
       }
@@ -115,6 +132,16 @@ export async function trackWallet(input: {
         label: input.label?.trim() || null,
       }),
     },
+  );
+}
+
+export async function syncWalletHistory(
+  address: TrackedAddress,
+): Promise<SyncResult> {
+  return requestJson<SyncResult>(
+    `/api/v1/investigations/${address.investigation_id}/addresses/${address.id}/sync`,
+    { method: "POST" },
+    SYNC_TIMEOUT_MS,
   );
 }
 
