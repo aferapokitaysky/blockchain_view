@@ -51,6 +51,25 @@ services:
       redis:
         condition: service_healthy
 
+  sync-worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    entrypoint: ["/usr/local/bin/sync_worker"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-tracefold}:${POSTGRES_PASSWORD:-tracefold_dev_only}@postgres:5432/${POSTGRES_DB:-tracefold}
+      REDIS_URL: redis://redis:6379
+      BITCOIN_ESPLORA_URL: ${BITCOIN_ESPLORA_URL:-https://blockstream.info/api}
+      BLOCKSCOUT_BASE_URL: ${BLOCKSCOUT_BASE_URL:-https://api.blockscout.com}
+      BLOCKSCOUT_API_KEY: ${BLOCKSCOUT_API_KEY:-}
+      RUST_LOG: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   redis-data:

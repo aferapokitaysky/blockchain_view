@@ -14,6 +14,7 @@ pub mod health;
 pub mod investigations;
 pub mod risk_signals;
 pub mod sanctions;
+pub mod sync_worker;
 pub mod transfers;
 
 pub type ApiState = health::HealthState;
