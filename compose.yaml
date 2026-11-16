@@ -40,6 +40,8 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-tracefold}:${POSTGRES_PASSWORD:-tracefold_dev_only}@postgres:5432/${POSTGRES_DB:-tracefold}
       REDIS_URL: redis://redis:6379
       BITCOIN_ESPLORA_URL: ${BITCOIN_ESPLORA_URL:-https://blockstream.info/api}
+      BLOCKSCOUT_BASE_URL: ${BLOCKSCOUT_BASE_URL:-https://api.blockscout.com}
+      BLOCKSCOUT_API_KEY: ${BLOCKSCOUT_API_KEY:-}
       RUST_LOG: info
     ports:
       - "127.0.0.1:${API_PORT:-8080}:8080"
