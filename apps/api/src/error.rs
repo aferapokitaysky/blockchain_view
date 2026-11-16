@@ -10,6 +10,10 @@ pub enum ApiError {
     Validation(&'static str),
     #[error("ресурс уже существует")]
     Conflict,
+    #[error("сеть пока не поддерживается синхронизацией")]
+    UnsupportedNetwork,
+    #[error("провайдер временно недоступен")]
+    ProviderUnavailable,
     #[error(transparent)]
     Database(#[from] sqlx::Error),
 }
@@ -36,6 +40,16 @@ impl IntoResponse for ApiError {
                 StatusCode::CONFLICT,
                 "conflict",
                 "Запись с таким адресом уже есть в расследовании",
+            ),
+            Self::UnsupportedNetwork => (
+                StatusCode::NOT_IMPLEMENTED,
+                "unsupported_network",
+                "Синхронизация этой сети пока не поддерживается",
+            ),
+            Self::ProviderUnavailable => (
+                StatusCode::BAD_GATEWAY,
+                "provider_unavailable",
+                "Источник данных временно недоступен или вернул неверный ответ",
             ),
             Self::Database(error) => {
                 if let sqlx::Error::Database(database_error) = &error
