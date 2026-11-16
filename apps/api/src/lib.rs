@@ -1,5 +1,6 @@
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     http::{Method, header},
     routing::get,
 };
@@ -10,11 +11,25 @@ pub mod config;
 pub mod error;
 pub mod health;
 pub mod investigations;
+pub mod risk_signals;
 pub mod transfers;
 
 pub type ApiState = health::HealthState;
 
 pub fn app(state: ApiState) -> Router {
+    let risk_signal_routes = Router::new()
+        .route(
+            "/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals",
+            get(risk_signals::list).post(risk_signals::create),
+        )
+        .route(
+            "/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}",
+            get(risk_signals::get_one)
+                .put(risk_signals::update)
+                .delete(risk_signals::delete),
+        )
+        .layer(DefaultBodyLimit::max(risk_signals::MAX_REQUEST_BYTES));
+
     Router::new()
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
@@ -34,6 +49,7 @@ pub fn app(state: ApiState) -> Router {
             "/api/v1/investigations/{investigation_id}/addresses/{address_id}/transfers",
             get(transfers::list_address_transfers),
         )
+        .merge(risk_signal_routes)
         .with_state(state)
         .layer(
             CorsLayer::new()
@@ -41,7 +57,13 @@ pub fn app(state: ApiState) -> Router {
                     axum::http::HeaderValue::from_static("http://localhost:5173"),
                     axum::http::HeaderValue::from_static("http://127.0.0.1:5173"),
                 ])
-                .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ])
                 .allow_headers([header::CONTENT_TYPE]),
         )
         .layer(TraceLayer::new_for_http())

@@ -25,13 +25,15 @@ The API creates and lists investigations and tracked addresses. A manual `POST` 
 
 For each transaction, records preserve the configured Esplora host, observation time, transaction hash, confirmation state, block metadata, and address-level input/output totals. `spent_amount` is the value in inputs attributed to the tracked address; `received_amount` is the value of outputs to it. Amounts are stored as integer satoshis and serialized as strings to avoid precision loss. These are independent input/output totals, not a net balance change.
 
+The risk-signal API stores analyst-entered evidence scoped to an investigation and tracked address. Each operation verifies both path IDs against the same address record. Signals retain their key, category, severity, source name and reference, observation time, structured details, and creation time. Request bodies are limited to 16 KiB and `details` to 8 KiB. These records are not automatically sourced or verified and do not change the frontend's provisional score.
+
 ## Provider scope and limits
 
 - Bitcoin history is fetched only when the sync endpoint is called. There is no scheduled polling or continuous monitoring.
 - Sync requests the initial Esplora history page, which may include unconfirmed mempool entries, then follows confirmed history for at most 20 pages total. This is up to 500 confirmed transactions, plus any mempool entries in the initial response.
 - The transfers endpoint returns at most 500 recent stored records. A sync can fetch more than that when the first page includes mempool entries, so the read endpoint is a bounded recent view.
 - Bitcoin is the only network with transaction-history sync. EVM history sync is unsupported. Esplora data provides transaction observations, not identity attribution or complete address coverage.
-- The `risk_signals` table is a storage schema only; risk-signal endpoints and provider integrations are not implemented.
+- The API supports create, list, read, replace, and delete operations for analyst-entered signals. No sanctions feed or commercial screening provider is connected, and these records do not alter the demo exposure score.
 
 ## Network identity and address handling
 

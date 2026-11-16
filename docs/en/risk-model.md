@@ -4,6 +4,8 @@
 
 The UI currently computes a small illustrative exposure index from bundled sample signals. The implementation weights signal severity, category, and hop distance, then caps the sum at 100. The displayed value is **not** a calibrated probability, a finding that funds are illicit, or a compliance decision. The sample evidence is synthetic and is not returned by a provider.
 
+The API can separately store analyst-entered signals with source names, references, observation timestamps, and structured details. These records are not automatically verified, do not populate the bundled UI sample, and do not affect the current score.
+
 Freshness, source reliability, and independent corroboration are displayed as source/time fields in the demo model but do not yet affect the score. The production design must not silently treat those fields as equivalent.
 
 ## Intended evidence model

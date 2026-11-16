@@ -8,6 +8,10 @@ pub enum ApiError {
     NotFound,
     #[error("неверные данные запроса")]
     Validation(&'static str),
+    #[error("некорректный JSON запроса")]
+    MalformedJson,
+    #[error("размер запроса превышает допустимый лимит")]
+    PayloadTooLarge,
     #[error("ресурс уже существует")]
     Conflict,
     #[error("сеть пока не поддерживается синхронизацией")]
@@ -36,6 +40,16 @@ impl IntoResponse for ApiError {
             Self::Validation(message) => {
                 (StatusCode::UNPROCESSABLE_ENTITY, "invalid_request", message)
             }
+            Self::MalformedJson => (
+                StatusCode::BAD_REQUEST,
+                "invalid_json",
+                "Некорректный JSON тела запроса",
+            ),
+            Self::PayloadTooLarge => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload_too_large",
+                "Тело запроса превышает допустимый размер",
+            ),
             Self::Conflict => (
                 StatusCode::CONFLICT,
                 "conflict",

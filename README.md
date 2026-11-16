@@ -27,12 +27,14 @@ The interface prototype includes a wallet-flow graph, network filters, a recent-
 - **Persistent storage:** PostgreSQL, with an initial migration for investigations, tracked addresses, and risk signals.
 - **Cache and coordination:** Redis, checked by the API readiness endpoint.
 
-The API supports creating and listing investigations, adding and listing tracked addresses, and manually syncing Bitcoin address history. The wallet form uses the API to save addresses and offers an on-demand sync action for Bitcoin; a history dialog then displays saved observations and their source. The graph, balances, risk panel, and main transaction table remain demo data. The API has no authentication and is intended for local development only. There is no continuous sync, EVM sync, sanctions feed, or commercial screening provider. The `risk_signals` table exists, but risk-signal API endpoints are not implemented.
+The API supports creating and listing investigations, adding and listing tracked addresses, manually syncing Bitcoin address history, and CRUD for analyst-entered risk signals. The wallet form uses the API to save addresses and offers an on-demand sync action for Bitcoin; a history dialog then displays saved observations and their source. The graph, balances, risk panel, and main transaction table remain demo data. Risk-signal records are stored with source provenance but do not populate the demo risk panel or change its provisional exposure score. The API has no authentication and is intended for local development only. There is no continuous sync, EVM sync, sanctions feed, or commercial screening provider.
 
 - `GET` / `POST` `/api/v1/investigations`
 - `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses`
 - `POST` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/sync`
 - `GET` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/transfers`
+- `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals`
+- `GET` / `PUT` / `DELETE` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}`
 
 ## Bitcoin transaction sync
 
@@ -93,8 +95,11 @@ cargo test --manifest-path apps/api/Cargo.toml --all-features
 
 - [Architecture](docs/en/architecture.md)
 - [Risk model](docs/en/risk-model.md)
+- [Risk signal API](docs/en/risk-signals-api.md)
 - [Russian architecture](docs/ru/architecture.md) · [Russian risk model](docs/ru/risk-model.md)
+- [Russian risk signal API](docs/ru/risk-signals-api.md)
 - [Ukrainian architecture](docs/uk/architecture.md) · [Ukrainian risk model](docs/uk/risk-model.md)
+- [Ukrainian risk signal API](docs/uk/risk-signals-api.md)
 
 ## Data sources and licensing
 
