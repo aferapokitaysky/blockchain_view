@@ -437,6 +437,11 @@
 .button:active {
   transform: scale(0.98);
 }
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
 .button-secondary {
   border: 1px solid #2b3732;
   color: #c3cec7;
@@ -1468,6 +1473,16 @@ tbody tr:hover {
   border: 1px solid #28392f;
   border-radius: 7px;
 }
+.detection-note.detection-invalid,
+.detection-note.detection-unsupported {
+  border-color: #5a3b31;
+  background: #241b17;
+}
+.detection-note.detection-invalid .detection-spark,
+.detection-note.detection-unsupported .detection-spark {
+  color: #e3ad78;
+  background: #402c20;
+}
 .detection-spark {
   display: grid;
   place-items: center;
@@ -1482,6 +1497,7 @@ tbody tr:hover {
   flex: 1;
   flex-direction: column;
   gap: 3px;
+  min-width: 0;
 }
 .detection-note b {
   color: #b8c6bd;
@@ -1491,6 +1507,7 @@ tbody tr:hover {
 .detection-note small {
   color: #718078;
   font-size: 8px;
+  line-height: 1.45;
 }
 .network-detected {
   display: flex;
@@ -1503,6 +1520,11 @@ tbody tr:hover {
   color: #a8b6ac;
   font-size: 8px;
   white-space: nowrap;
+  cursor: default;
+  flex: none;
+}
+select.network-detected {
+  max-width: 126px;
   cursor: pointer;
 }
 .network-detected .network-mark {
