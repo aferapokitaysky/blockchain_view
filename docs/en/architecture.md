@@ -33,10 +33,10 @@ The optional worker scans tracked addresses every 30 seconds in batches, enqueue
 
 ## Provider scope and limits
 
-- Bitcoin history is fetched on demand and by the optional scheduled worker.
+- Bitcoin and selected EVM history can be fetched on demand and by the optional scheduled worker.
 - Sync requests the initial Esplora history page, which may include unconfirmed mempool entries, then follows confirmed history for at most 20 pages total. This is up to 500 confirmed transactions, plus any mempool entries in the initial response.
 - The transfers endpoint returns at most 500 recent stored records. A sync can fetch more than that when the first page includes mempool entries, so the read endpoint is a bounded recent view.
-- Bitcoin history sync uses Esplora. On-demand EVM history uses Blockscout for Ethereum (1), Base (8453), and Arbitrum One (42161), fetching normal native transactions, successful internal native transfers, and ERC-20 events. Each stream is capped at 10 pages of 50 rows; `may_have_more_history` reports when a provider cursor remains at the cap. This is not a complete index or identity attribution; other EVM networks and token standards are excluded.
+- Bitcoin history sync uses Esplora. EVM history uses Blockscout for Ethereum (1), Base (8453), and Arbitrum One (42161), fetching normal native transactions, successful internal native transfers, and ERC-20 events. Each stream is capped at 10 pages of 50 rows; `may_have_more_history` reports when a provider cursor remains at the cap. Both manual requests and the background worker use these bounds. This is not a complete index or identity attribution; other EVM networks and token standards are excluded.
 - The API supports create, list, read, replace, and delete operations for analyst-entered signals. Exact-address screening uses a locally imported OFAC SDN snapshot for Bitcoin and Ethereum. There is no background refresh or indirect-exposure screening; the snapshot publication date is returned to make its age visible. Results do not alter the demo exposure score.
 
 ## Network identity and address handling
