@@ -2,7 +2,7 @@
 
 Open-source workspace for exploring how funds move between blockchain addresses.
 
-> **Project status: early prototype.** The current graph, wallet labels, transactions, balances, and risk signals are illustrative demo data. No blockchain indexer, sanctions feed, or commercial screening provider is connected. Do not use the displayed numbers for operational or compliance decisions.
+> **Project status: early prototype.** The graph, wallet labels, balances, transaction table, and risk signals in the UI are illustrative demo data. The API can fetch Bitcoin address history on demand from Blockstream Esplora; it does not continuously monitor addresses. EVM sync, sanctions data, and commercial screening are not connected. Do not use demo values for operational or compliance decisions.
 
 **Documentation:** [Русский](README.ru.md) · [Українська](README.uk.md) · [English](README.md)
 
@@ -27,10 +27,18 @@ The interface prototype includes a wallet-flow graph, network filters, a recent-
 - **Persistent storage:** PostgreSQL, with an initial migration for investigations, tracked addresses, and risk signals.
 - **Cache and coordination:** Redis, checked by the API readiness endpoint.
 
-The API supports creating and listing investigations, and adding and listing tracked addresses. The frontend still uses bundled demo data and is not connected to the API. The API has no authentication and is intended for local development only. There is no chain indexer, transaction ingestion, sanctions feed, or commercial screening provider. The `risk_signals` table exists, but risk-signal API endpoints are not implemented.
+The API supports creating and listing investigations, adding and listing tracked addresses, and manually syncing Bitcoin address history. The frontend still uses bundled demo data and is not connected to the API. The API has no authentication and is intended for local development only. There is no continuous sync, EVM sync, sanctions feed, or commercial screening provider. The `risk_signals` table exists, but risk-signal API endpoints are not implemented.
 
 - `GET` / `POST` `/api/v1/investigations`
-- `GET` / `POST` `/api/v1/investigations/{id}/addresses`
+- `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses`
+- `POST` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/sync`
+- `GET` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/transfers`
+
+## Bitcoin transaction sync
+
+Bitcoin sync is on demand only: call the sync endpoint for a tracked Bitcoin address, then read its stored results from the transfers endpoint. The provider is Blockstream Esplora. EVM transaction sync is unavailable.
+
+Each sync fetches the initial address-history page, which can include current unconfirmed mempool transactions, then paginates confirmed history up to 20 pages total (up to 500 confirmed transactions). Results contain address-level input value spent and output value received per transaction, both in satoshis; these are totals, not a net balance change. The transfers endpoint returns up to 500 most recent stored records for that address. No background polling or continuous monitoring runs.
 
 ## Run the local API
 
@@ -90,7 +98,7 @@ cargo test --manifest-path apps/api/Cargo.toml --all-features
 
 ## Data sources and licensing
 
-No third-party attribution or sanctions dataset is bundled in this prototype. Future adapters must document provider terms, coverage, update cadence, attribution rules, and any redistribution limits. For sanctions screening, prefer machine-readable official datasets where their terms allow it; OFAC explicitly says its web search interface is intended for individual searches rather than continuous automated queries ([OFAC FAQ](https://ofac.treasury.gov/faqs/287)). Commercial blockchain analytics require a separately licensed provider account.
+Bitcoin address sync reads transaction history from the public Blockstream Esplora API on demand. This provides blockchain transaction data, not identity attribution or comprehensive wallet-risk coverage. No sanctions or commercial screening dataset is connected. Future adapters must document provider terms, coverage, update cadence, attribution rules, and any redistribution limits. For sanctions screening, prefer machine-readable official datasets where their terms allow it; OFAC explicitly says its web search interface is intended for individual searches rather than continuous automated queries ([OFAC FAQ](https://ofac.treasury.gov/faqs/287)). Commercial blockchain analytics require a separately licensed provider account.
 
 ## Contributing
 
