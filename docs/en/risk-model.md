@@ -14,6 +14,10 @@ Severity weights are critical 80, high 48, medium 24, low 8, and informational 0
 
 The displayed bands are low below 20, guarded from 20, elevated from 45, and high from 75. They are review priorities, not calibrated probabilities.
 
+## Transaction score foundation
+
+The frontend includes a deterministic `scoreTransfer` calculator (`0.1.0`) for evidence already scoped to one transfer. It uses the same severity points, direct factor `1`, indirect factor `1 / (hops + 1)`, and behavioral factor `0.9`; contributions are capped at 100 and use the same review bands. This calculator uses analyst evidence only when its `transaction_hash` exactly matches the observed transaction, and exact OFAC matches only when a matched participant address is in the transaction. Do not pass wallet-wide signals into it unless the source explicitly ties that evidence to the transfer. An empty evidence set has an `unknown` level and means “no evidence recorded,” not “low risk.”
+
 The panel is address-scoped, reports the model version, and describes an empty signal set as “no evidence recorded,” not a clean result. Source timestamps and references are displayed but not used in the calculation. Stale evidence is not down-weighted yet.
 
 Confirmed saved observations also produce derived fan-in and fan-out signals when at least four distinct counterparties appear in the same rolling 24-hour window. Incoming and outgoing directions are evaluated separately. Unconfirmed events, missing counterparties, and invalid timestamps are ignored. Each pattern contributes once per selected address and direction; duplicate events with the same counterparty do not increase the count. The signal lists its network, provider, and concrete UTC start/end timestamps, and explicitly does not imply common ownership or intent. These are deterministic triage heuristics, not calibrated indicators; the threshold is provisional and should be evaluated against labeled cases before operational use.
