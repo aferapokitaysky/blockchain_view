@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { WalletHistory } from "../investigations/api";
-import { buildWalletFlowGraph } from "./model";
+import { buildWalletFlowGraph, findObservedPaths } from "./model";
+import "./WalletFlowGraph.css";
 
 type WalletFlowGraphProps = {
   histories: WalletHistory[];
@@ -13,7 +14,23 @@ function shortAddress(address: string): string {
 export function WalletFlowGraph({ histories }: WalletFlowGraphProps) {
   const graph = useMemo(() => buildWalletFlowGraph(histories), [histories]);
   const [selectedNode, setSelectedNode] = useState("");
+  const [maxDepth, setMaxDepth] = useState<1 | 2 | 3>(2);
   const focusedNode = graph.nodes.find((node) => node.id === selectedNode);
+  const pathAnalysis = useMemo(
+    () =>
+      focusedNode
+        ? findObservedPaths(graph.edges, focusedNode.id, maxDepth)
+        : null,
+    [focusedNode, graph.edges, maxDepth],
+  );
+  const nodesById = useMemo(
+    () => new Map(graph.nodes.map((node) => [node.id, node])),
+    [graph.nodes],
+  );
+  const edgesById = useMemo(
+    () => new Map(graph.edges.map((edge) => [edge.id, edge])),
+    [graph.edges],
+  );
   const focusedEdges = focusedNode
     ? graph.edges.filter(
         (edge) => edge.from === focusedNode.id || edge.to === focusedNode.id,
@@ -34,6 +51,33 @@ export function WalletFlowGraph({ histories }: WalletFlowGraphProps) {
           <span>{graph.nodes.length} addresses</span>
           <span>{graph.edges.length} connections</span>
         </div>
+      </div>
+
+      <div className="flow-path-explorer">
+        <div className="flow-path-controls">
+          <label htmlFor="flow-path-depth">Maximum observed hops</label>
+          <select
+            id="flow-path-depth"
+            value={maxDepth}
+            onChange={(event) => {
+              const value = event.target.value;
+              setMaxDepth(value === "1" ? 1 : value === "3" ? 3 : 2);
+            }}
+          >
+            <option value={1}>1 hop</option>
+            <option value={2}>2 hops</option>
+            <option value={3}>3 hops</option>
+          </select>
+          <span>
+            {focusedNode && pathAnalysis
+              ? `${pathAnalysis.paths.length} addresses reachable from ${focusedNode.label}`
+              : "Select an address to trace observed outgoing paths"}
+          </span>
+        </div>
+        <p className="flow-path-disclaimer">
+          Paths connect observed sender-to-recipient events. They do not prove
+          that the same asset or funds moved continuously between hops.
+        </p>
       </div>
 
       {graph.edges.length === 0 ? (
@@ -98,21 +142,20 @@ export function WalletFlowGraph({ histories }: WalletFlowGraphProps) {
               </defs>
               <g className="flow-edges">
                 {graph.edges.map((edge, index) => {
-                  const from = graph.nodes.find(
-                    (node) => node.id === edge.from,
-                  );
-                  const to = graph.nodes.find((node) => node.id === edge.to);
+                  const from = nodesById.get(edge.from);
+                  const to = nodesById.get(edge.to);
                   if (!from || !to) return null;
                   const offset = ((index % 5) - 2) * 16;
                   const midX = (from.x + to.x) / 2;
                   const midY = (from.y + to.y) / 2 + offset;
+                  const isPathEdge = pathAnalysis?.pathEdgeIds.has(edge.id);
                   return (
                     <g key={edge.id}>
                       <title>
                         {`${shortAddress(from.address)} to ${shortAddress(to.address)}: ${edge.amount} ${edge.asset}, ${edge.transfers} event${edge.transfers === 1 ? "" : "s"}`}
                       </title>
                       <path
-                        className="flow-edge-line"
+                        className={`flow-edge-line ${isPathEdge ? "is-path" : pathAnalysis ? "is-dimmed" : ""}`}
                         d={`M ${from.x} ${from.y} Q ${midX} ${midY} ${to.x} ${to.y}`}
                         markerEnd="url(#flow-arrow)"
                         strokeWidth={Math.min(
@@ -128,7 +171,7 @@ export function WalletFlowGraph({ histories }: WalletFlowGraphProps) {
                 {graph.nodes.map((node) => (
                   <g
                     key={node.id}
-                    className={`flow-node ${node.tracked ? "is-tracked" : "is-external"} ${selectedNode === node.id ? "is-selected" : ""}`}
+                    className={`flow-node ${node.tracked ? "is-tracked" : "is-external"} ${selectedNode === node.id ? "is-selected is-origin" : ""} ${pathAnalysis?.depthByNode.has(node.id) && node.id !== selectedNode ? "is-reachable" : ""} ${pathAnalysis && !pathAnalysis.depthByNode.has(node.id) ? "is-dimmed" : ""}`}
                     transform={`translate(${node.x} ${node.y})`}
                     role="button"
                     tabIndex={0}
@@ -175,7 +218,7 @@ export function WalletFlowGraph({ histories }: WalletFlowGraphProps) {
                 {focusedEdges.slice(0, 5).map((edge) => {
                   const otherId =
                     edge.from === focusedNode.id ? edge.to : edge.from;
-                  const other = graph.nodes.find((node) => node.id === otherId);
+                  const other = nodesById.get(otherId);
                   return (
                     <li key={edge.id}>
                       <span>
@@ -188,10 +231,83 @@ export function WalletFlowGraph({ histories }: WalletFlowGraphProps) {
                         {edge.amount} {edge.asset}{" "}
                         <small>· {edge.transfers} events</small>
                       </strong>
+                      <small className="flow-edge-provenance">
+                        {edge.providers.join(", ")} · latest{" "}
+                        {edge.latestTimeKind === "block"
+                          ? "block time"
+                          : "provider observation"}{" "}
+                        <time dateTime={edge.latestAt}>
+                          {formatObservedAt(edge.latestAt)}
+                        </time>
+                        {edge.sourceHosts.length > 0 && (
+                          <> · {edge.sourceHosts.join(", ")}</>
+                        )}
+                      </small>
                     </li>
                   );
                 })}
               </ul>
+            </div>
+          )}
+          {focusedNode && pathAnalysis && (
+            <div className="flow-path-results" aria-live="polite">
+              <div className="flow-path-results-heading">
+                <strong>Shortest observed paths</strong>
+                <span>
+                  up to {maxDepth} hops · direction follows sender → recipient
+                </span>
+              </div>
+              {pathAnalysis.paths.length === 0 ? (
+                <p>No outgoing paths were observed within this depth.</p>
+              ) : (
+                <ol>
+                  {pathAnalysis.paths.slice(0, 12).map((path) => {
+                    const target = nodesById.get(path.targetId);
+                    const steps = path.edgeIds
+                      .map((edgeId) => edgesById.get(edgeId))
+                      .filter((edge) => edge !== undefined);
+                    if (!target) return null;
+                    return (
+                      <li key={path.targetId}>
+                        <div className="flow-observed-route">
+                          <span>{focusedNode.label}</span>
+                          {steps.map((edge) => (
+                            <span key={edge.id}>
+                              <i aria-hidden="true">→</i>{" "}
+                              {nodesById.get(edge.to)?.label ??
+                                "Unknown address"}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flow-observed-evidence">
+                          {steps.map((edge) => (
+                            <span key={edge.id}>
+                              {edge.asset} · {edge.transfers} observed event
+                              {edge.transfers === 1 ? "" : "s"} ·{" "}
+                              {edge.providers.join(", ")} · latest{" "}
+                              {edge.latestTimeKind === "block"
+                                ? "block time"
+                                : "provider observation"}{" "}
+                              <time dateTime={edge.latestAt}>
+                                {formatObservedAt(edge.latestAt)}
+                              </time>
+                              {edge.sourceHosts.length > 0 &&
+                                ` · ${edge.sourceHosts.join(", ")}`}
+                            </span>
+                          ))}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+              {pathAnalysis.paths.length > 12 && (
+                <p>
+                  Showing 12 of {pathAnalysis.paths.length} reachable addresses;
+                  the graph highlights all shortest paths within the selected
+                  depth.
+                </p>
+              )}
             </div>
           )}
           {graph.truncated && (
@@ -204,4 +320,14 @@ export function WalletFlowGraph({ histories }: WalletFlowGraphProps) {
       )}
     </section>
   );
+}
+
+function formatObservedAt(value: string): string {
+  const timestamp = new Date(value);
+  return Number.isFinite(timestamp.getTime())
+    ? new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(timestamp)
+    : "time unavailable";
 }
