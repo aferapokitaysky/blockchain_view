@@ -120,4 +120,5 @@ This project is licensed under the Apache License, Version 2.0. See [LICENSE](LI
 ## Security and responsible use
 
 Never submit private keys, seed phrases, or secrets. Tracefold is watch-only by design. Risk signals are leads for human review, not legal advice, proof of identity, or an automated basis for freezing or denying access to funds. Follow applicable law and provider terms when collecting or processing data.
+
 - `GET` `/api/v1/networks`
