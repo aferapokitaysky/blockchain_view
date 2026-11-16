@@ -20,14 +20,36 @@ Tracefold задуманий як OSINT-інструмент для розслі
 - Називати оцінку індексом ризикової експозиції, а не ймовірністю чи доказом порушення.
 - Показувати повноту покриття й актуальність даних; не створювати враження, що відстежуються всі гаманці та мережі.
 
-## Запланований стек
+## Поточний стек
 
-- **Frontend:** React, TypeScript, Vite, Tailwind CSS.
-- **API та обробка:** Rust з Axum.
-- **Постійні дані:** PostgreSQL.
-- **Кеш і короткочасна координація:** Redis.
+- **Frontend:** React, TypeScript, Vite та Tailwind CSS.
+- **API:** локальний сервіс на Rust і Axum.
+- **Постійні дані:** PostgreSQL; початкова міграція створює таблиці розслідувань, відстежуваних адрес і сигналів ризику.
+- **Кеш і координація:** Redis; API перевіряє його доступність у readiness endpoint.
 
-Backend, схема бази даних, адаптери джерел і production-модель ризику ще не готові.
+API вміє створювати й показувати список розслідувань, а також додавати й показувати список відстежуваних адрес. Frontend поки використовує вбудовані демодані й не підключений до API. В API немає автентифікації, він призначений лише для локальної розробки. Індексатора мереж, завантаження транзакцій, санкційного джерела та комерційного сервісу перевірки немає. Таблицю `risk_signals` створено, але API для роботи із сигналами ризику ще не реалізовано.
+
+- `GET` / `POST` `/api/v1/investigations`
+- `GET` / `POST` `/api/v1/investigations/{id}/addresses`
+
+## Запуск локального API
+
+Потрібен Docker Compose.
+
+```sh
+docker compose --env-file .env.example up --build -d
+```
+
+Приклад конфігурації використовує облікові дані лише для локальної розробки. Compose публікує сервіси на loopback; не відкривайте цей API без автентифікації в мережу. Перевірити стан можна за адресами:
+
+- `http://127.0.0.1:8080/health/live`
+- `http://127.0.0.1:8080/health/ready` — перевіряє PostgreSQL і Redis.
+
+Зупинити сервіси зі збереженням даних бази можна командою:
+
+```sh
+docker compose --env-file .env.example down
+```
 
 ## Запуск прототипу інтерфейсу
 
@@ -42,6 +64,8 @@ Vite виведе локальну адресу застосунку. Зараз
 
 ## Перевірки
 
+Перевірки frontend:
+
 ```sh
 npm run lint
 npm run format:check
@@ -49,7 +73,13 @@ npm run test
 npm run build
 ```
 
-Інструкції для Rust буде додано разом з API.
+Перевірки Rust API:
+
+```sh
+cargo fmt --manifest-path apps/api/Cargo.toml --all -- --check
+cargo clippy --manifest-path apps/api/Cargo.toml --all-targets --all-features -- -D warnings
+cargo test --manifest-path apps/api/Cargo.toml --all-features
+```
 
 ## Документація
 
