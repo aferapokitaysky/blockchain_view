@@ -47,9 +47,11 @@ import {
   listTrackedWalletHistories,
   listTrackedWallets,
   listWalletHistory,
+  screenWalletAddress,
   syncWalletHistory,
   trackWallet,
   type ObservedTransfer,
+  type AddressScreeningResult,
   type TrackedAddress,
   type WalletHistory,
 } from "./features/investigations/api";
@@ -515,6 +517,10 @@ function App() {
   );
   const [flowLoading, setFlowLoading] = useState(false);
   const [flowError, setFlowError] = useState("");
+  const [screeningLoading, setScreeningLoading] = useState(false);
+  const [screeningError, setScreeningError] = useState("");
+  const [screeningResult, setScreeningResult] =
+    useState<AddressScreeningResult | null>(null);
   const [activeTab, setActiveTab] = useState("Overview");
   const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[0];
   const selectedTrackedAddress = trackedAddresses.find(
@@ -633,6 +639,7 @@ function App() {
       ]);
       setSelectedAddressId(trackedAddress.id);
       setHistoryRecords(null);
+      setScreeningResult(null);
       setShowAdd(false);
       setQuery("");
       setWalletLabel("");
@@ -699,6 +706,24 @@ function App() {
       );
     } finally {
       setFlowLoading(false);
+    }
+  };
+
+  const screenSelectedAddress = async () => {
+    if (!selectedTrackedAddress || screeningLoading) return;
+    setScreeningLoading(true);
+    setScreeningError("");
+    setScreeningResult(null);
+    try {
+      setScreeningResult(await screenWalletAddress(selectedTrackedAddress));
+    } catch (error) {
+      setScreeningError(
+        error instanceof ApiRequestError
+          ? error.message
+          : "Could not check this address. Try again.",
+      );
+    } finally {
+      setScreeningLoading(false);
     }
   };
 
@@ -1259,6 +1284,8 @@ function App() {
                     setSelectedAddressId(event.target.value);
                     setHistoryRecords(null);
                     setHistoryError("");
+                    setScreeningResult(null);
+                    setScreeningError("");
                   }}
                 >
                   {trackedAddresses.map((address) => (
@@ -1300,6 +1327,76 @@ function App() {
                     </button>
                   </div>
                 )}
+              </div>
+            )}
+            <div className="screening-action">
+              <div>
+                <strong>OFAC SDN address check</strong>
+                <p>
+                  Exact match against the locally imported list snapshot. It
+                  does not check indirect exposure.
+                </p>
+              </div>
+              <button
+                className="button button-secondary"
+                onClick={() => void screenSelectedAddress()}
+                disabled={!selectedTrackedAddress || screeningLoading}
+              >
+                {screeningLoading ? "Checking address…" : "Check address"}
+              </button>
+            </div>
+            {screeningError && (
+              <div className="address-state address-error" role="alert">
+                <span>{screeningError}</span>
+                <button
+                  className="text-action"
+                  onClick={() => void screenSelectedAddress()}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            {screeningResult && (
+              <div
+                className={`screening-result status-${screeningResult.status}`}
+                role="status"
+              >
+                <div className="screening-result-heading">
+                  <strong>
+                    {screeningResult.status === "exact_match" &&
+                      "Exact match found"}
+                    {screeningResult.status === "no_exact_match" &&
+                      "No exact match in this snapshot"}
+                    {screeningResult.status === "source_not_imported" &&
+                      "OFAC snapshot is not imported"}
+                    {screeningResult.status === "network_not_covered" &&
+                      "Network is not covered"}
+                  </strong>
+                  {screeningResult.source && (
+                    <small>
+                      {screeningResult.source.source_name} · published{" "}
+                      {screeningResult.source.published_at} · imported{" "}
+                      {new Date(
+                        screeningResult.source.imported_at,
+                      ).toLocaleString()}
+                    </small>
+                  )}
+                </div>
+                {screeningResult.matches.map((match) => (
+                  <div
+                    className="screening-match"
+                    key={`${match.entity_uid}:${match.currency_code}:${match.address}`}
+                  >
+                    <strong>{match.entity_name}</strong>
+                    <span>
+                      {match.currency_code} · ID {match.entity_uid}
+                    </span>
+                    {match.programs.length > 0 && (
+                      <small>{match.programs.join(", ")}</small>
+                    )}
+                  </div>
+                ))}
+                <p>{screeningResult.explanation}</p>
               </div>
             )}
             <div className="flow-graph-action">

@@ -27,7 +27,7 @@ Thresholds must be configurable and evaluated against a documented validation se
 
 ## Sources
 
-No list or commercial provider is connected. OFAC publishes machine-readable sanctions list files for automated use; its interactive search tool is intended for individual lookups, not automated continuous queries ([OFAC FAQ](https://ofac.treasury.gov/faqs/287)). Before adding a provider, review its API terms, redistribution rights, supported networks, refresh cadence, and attribution requirements.
+An exact-address check against a locally imported OFAC SDN snapshot is implemented for Bitcoin and Ethereum; see [screening setup and coverage](ofac-screening.md). No commercial provider or indirect-exposure model is connected. OFAC publishes machine-readable sanctions list files for automated use; its interactive search tool is intended for individual lookups, not automated continuous queries ([OFAC FAQ](https://ofac.treasury.gov/faqs/287)). Before adding another provider, review its API terms, redistribution rights, supported networks, refresh cadence, and attribution requirements.
 
 ## Providers and public datasets to evaluate
 

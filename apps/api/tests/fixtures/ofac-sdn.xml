@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdnList>
+  <publshInformation>
+    <Publish_Date>11/12/2026 01:00:00 PM</Publish_Date>
+    <Record_Count>1</Record_Count>
+  </publshInformation>
+  <sdnEntry>
+    <uid>12345</uid>
+    <lastName>Example Exchange</lastName>
+    <sdnType>Entity</sdnType>
+    <programList><program>TEST-PROGRAM</program></programList>
+    <idList>
+      <id><uid>1</uid><idType>Digital Currency Address - ETH</idType><idNumber>0xAbCd000000000000000000000000000000000001</idNumber><idCountry/></id>
+      <id><uid>2</uid><idType>Digital Currency Address - XBT</idType><idNumber>bc1qexample</idNumber><idCountry/></id>
+      <id><uid>3</uid><idType>Passport</idType><idNumber>PUBLIC-IDENTIFIER</idNumber><idCountry>US</idCountry></id>
+    </idList>
+  </sdnEntry>
+</sdnList>

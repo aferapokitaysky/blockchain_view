@@ -23,7 +23,7 @@ pub enum Network {
 }
 
 impl Network {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Ethereum => "ethereum",
             Self::Bitcoin => "bitcoin",
@@ -32,7 +32,7 @@ impl Network {
         }
     }
 
-    fn normalize(self, value: &str) -> Result<String, ApiError> {
+    pub(crate) fn normalize(self, value: &str) -> Result<String, ApiError> {
         let value = value.trim();
         match self {
             Self::Ethereum | Self::Base | Self::Arbitrum => {
