@@ -41,6 +41,11 @@ import {
   type AddressDetection,
   type SupportedNetwork,
 } from "./features/networks/detectAddressNetwork";
+import {
+  ApiRequestError,
+  checkApiHealth,
+  trackWallet,
+} from "./features/investigations/api";
 import "./App.css";
 
 type Network = "Ethereum" | "Bitcoin" | "Base" | "Arbitrum";
@@ -471,7 +476,13 @@ function App() {
   const [zoom, setZoom] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [query, setQuery] = useState("");
+  const [walletLabel, setWalletLabel] = useState("");
   const [networkChoice, setNetworkChoice] = useState<SupportedNetwork | "">("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">(
+    "checking",
+  );
   const [addressDetection, setAddressDetection] = useState<AddressDetection>({
     status: "empty",
     message: "Paste a wallet address.",
@@ -495,9 +506,25 @@ function App() {
     };
   }, [query]);
 
+  useEffect(() => {
+    let isCurrent = true;
+    const refreshApiStatus = () => {
+      void checkApiHealth().then((isOnline) => {
+        if (isCurrent) setApiStatus(isOnline ? "online" : "offline");
+      });
+    };
+    refreshApiStatus();
+    const refreshInterval = window.setInterval(refreshApiStatus, 30_000);
+    return () => {
+      isCurrent = false;
+      window.clearInterval(refreshInterval);
+    };
+  }, []);
+
   const handleSearch = (value: string) => {
     setQuery(value);
     setNetworkChoice("");
+    setFormError("");
     if (!value) return;
     const match = nodes.find((node) =>
       `${node.address} ${node.name}`
@@ -507,7 +534,7 @@ function App() {
     if (match) setSelected(match.id);
   };
 
-  const submitAddress = (event: FormEvent<HTMLFormElement>) => {
+  const submitAddress = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const network =
       addressDetection.status === "detected"
@@ -516,21 +543,47 @@ function App() {
           ? networkChoice
           : "";
     if (!network) {
-      setNotice(
+      setFormError(
         addressDetection.status === "ambiguous"
           ? "Select the EVM network before tracking this wallet"
           : "Enter a valid address on a supported network",
       );
       return;
     }
-    setShowAdd(false);
-    setNotice(`Address queued for ${network} analysis`);
-    window.setTimeout(() => setNotice(""), 3400);
+
+    setFormError("");
+    setIsSubmitting(true);
+    try {
+      await trackWallet({ network, address: query, label: walletLabel });
+      setShowAdd(false);
+      setQuery("");
+      setWalletLabel("");
+      setNetworkChoice("");
+      setNotice(
+        "Wallet saved to " +
+          network +
+          ". Live transaction monitoring is not active yet.",
+      );
+      window.setTimeout(() => setNotice(""), 5000);
+    } catch (error) {
+      setFormError(
+        error instanceof ApiRequestError
+          ? error.message
+          : "Could not save the wallet. Please try again.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const openAddWallet = () => {
+    void checkApiHealth().then((isOnline) =>
+      setApiStatus(isOnline ? "online" : "offline"),
+    );
     setQuery("");
+    setWalletLabel("");
     setNetworkChoice("");
+    setFormError("");
     setShowAdd(true);
   };
 
@@ -615,19 +668,16 @@ function App() {
         <div className="sidebar-spacer" />
         <div className="usage-card">
           <div className="usage-head">
-            <span>API capacity</span>
-            <span>68%</span>
+            <span>Data sources</span>
+            <span className="source-count">0 connected</span>
           </div>
-          <div className="usage-track">
-            <i />
-          </div>
-          <p>6,840 of 10,000 requests</p>
+          <p>Demo data only. Live blockchain feeds are not connected.</p>
           <button
             onClick={() =>
-              setNotice("Планы использования появятся в настройках")
+              setNotice("No chain data provider is configured yet.")
             }
           >
-            View usage <ExternalLink size={12} />
+            Manage sources <ExternalLink size={12} />
           </button>
         </div>
         <button className="profile-button">
@@ -651,8 +701,13 @@ function App() {
             <b>{activeTab}</b>
           </div>
           <div className="top-actions">
-            <span className="live-status">
-              <i /> All systems operational
+            <span className={`live-status api-${apiStatus}`}>
+              <i />
+              {apiStatus === "online"
+                ? "API + data stores connected"
+                : apiStatus === "checking"
+                  ? "Checking API + data stores"
+                  : "Local API unavailable"}
             </span>
             <button
               className="icon-button"
@@ -677,8 +732,8 @@ function App() {
           <div className="page-heading">
             <div>
               <div className="eyebrow">
-                <span className="eyebrow-dot" />
-                Live investigation
+                <span className="eyebrow-dot demo-dot" />
+                Demo investigation
               </div>
               <h1>Wallet flow overview</h1>
               <p>Track how value moves across addresses and networks.</p>
@@ -873,8 +928,7 @@ function App() {
                 <Focus size={15} />
               </button>
               <div className="graph-attribution">
-                <span className="live-dot" /> Streaming updates <span>·</span>{" "}
-                Updated just now
+                Sample graph <span>·</span> No live updates
               </div>
             </div>
             <div className="graph-footer">
@@ -1129,6 +1183,7 @@ function App() {
                 className="icon-button"
                 aria-label="Закрыть"
                 onClick={() => setShowAdd(false)}
+                disabled={isSubmitting}
               >
                 <X size={17} />
               </button>
@@ -1137,7 +1192,11 @@ function App() {
             <p>
               Paste an address to identify its network and follow new transfers.
             </p>
-            <form onSubmit={submitAddress}>
+            <form
+              onSubmit={submitAddress}
+              aria-busy={isSubmitting}
+              aria-describedby={formError ? "wallet-form-error" : undefined}
+            >
               <label htmlFor="wallet-address">Wallet address</label>
               <div className="address-input">
                 <input
@@ -1148,6 +1207,7 @@ function App() {
                   minLength={8}
                   value={query}
                   onChange={(event) => handleSearch(event.target.value)}
+                  disabled={isSubmitting}
                 />
                 <Search size={16} />
               </div>
@@ -1172,10 +1232,12 @@ function App() {
                     className="network-detected"
                     aria-label="Select EVM network"
                     value={networkChoice}
-                    onChange={(event) =>
-                      setNetworkChoice(event.target.value as SupportedNetwork)
-                    }
+                    onChange={(event) => {
+                      setNetworkChoice(event.target.value as SupportedNetwork);
+                      setFormError("");
+                    }}
                     required
+                    disabled={isSubmitting}
                   >
                     <option value="">Select network</option>
                     {addressDetection.candidates.map((network) => (
@@ -1193,16 +1255,26 @@ function App() {
                 id="wallet-label"
                 className="label-input"
                 placeholder="e.g. Treasury wallet"
+                maxLength={80}
+                value={walletLabel}
+                onChange={(event) => setWalletLabel(event.target.value)}
+                disabled={isSubmitting}
               />
               <div className="modal-note">
                 <ShieldCheck size={14} /> Watch-only. No private keys are
                 requested or stored.
               </div>
+              {formError && (
+                <p className="form-error" id="wallet-form-error" role="alert">
+                  {formError}
+                </p>
+              )}
               <div className="modal-actions">
                 <button
                   type="button"
                   className="button button-secondary"
                   onClick={() => setShowAdd(false)}
+                  disabled={isSubmitting}
                 >
                   Cancel
                 </button>
@@ -1210,11 +1282,23 @@ function App() {
                   className="button button-primary"
                   type="submit"
                   disabled={
-                    addressDetection.status !== "detected" &&
-                    !(addressDetection.status === "ambiguous" && networkChoice)
+                    isSubmitting ||
+                    (addressDetection.status !== "detected" &&
+                      !(
+                        addressDetection.status === "ambiguous" && networkChoice
+                      ))
                   }
                 >
-                  <Plus size={15} /> Track wallet
+                  {isSubmitting ? (
+                    <>
+                      <span className="button-spinner" aria-hidden="true" />
+                      Saving wallet…
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={15} /> Track wallet
+                    </>
+                  )}
                 </button>
               </div>
             </form>
