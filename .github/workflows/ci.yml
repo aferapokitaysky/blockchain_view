@@ -35,7 +35,6 @@ jobs:
   rust-api:
     name: Rust API
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('apps/api/Cargo.toml') != '' }}
     services:
       postgres:
         image: postgres:17-alpine
@@ -50,8 +49,18 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       DATABASE_URL: postgres://tracefold:tracefold_test_only@localhost:5432/tracefold_test
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -63,3 +72,4 @@ jobs:
       - run: cargo fmt --manifest-path apps/api/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path apps/api/Cargo.toml --all-targets --all-features -- -D warnings
       - run: cargo test --manifest-path apps/api/Cargo.toml --all-features
+      - run: cargo build --release --locked -p tracefold-api --bins
