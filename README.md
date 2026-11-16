@@ -2,7 +2,7 @@
 
 Open-source workspace for exploring how funds move between blockchain addresses.
 
-> **Project status: early prototype.** The graph, wallet labels, balances, transaction table, and risk signals in the UI are illustrative demo data. The API can fetch Bitcoin history from Blockstream Esplora and EVM history from Blockscout on demand; it does not continuously monitor addresses. EVM support is limited to Ethereum, Base, and Arbitrum One. Sanctions data and commercial screening are not connected. Do not use demo values for operational or compliance decisions.
+> **Project status: early prototype.** The overview graph, wallet labels, balances, transaction table, and risk panel still include illustrative demo data. The saved-wallet panel loads Bitcoin and EVM observations from configured providers. Its separate transfer-links view uses exact EVM sender/recipient fields from saved history; it does not infer Bitcoin counterparties. History sync is manual, not continuous. EVM support is limited to Ethereum, Base, and Arbitrum One. Sanctions data and commercial screening are not connected. Do not use demo values for operational or compliance decisions.
 
 **Documentation:** [Русский](README.ru.md) · [Українська](README.uk.md) · [English](README.md)
 
@@ -10,7 +10,7 @@ Open-source workspace for exploring how funds move between blockchain addresses.
 
 Tracefold is being designed as an OSINT investigation tool. An analyst should be able to start from an address, follow transfers across supported networks, preserve the evidence behind each relationship, and review risk signals without treating an algorithmic score as proof.
 
-The interface prototype includes a wallet-flow graph, network filters, a recent-transfer table, and an explainable demo exposure score.
+The interface prototype includes a demo overview graph and an evidence-based EVM transfer-links view, alongside network filters, a recent-transfer table, and an explainable demo exposure score.
 
 ## Product principles
 
@@ -27,7 +27,7 @@ The interface prototype includes a wallet-flow graph, network filters, a recent-
 - **Persistent storage:** PostgreSQL, with an initial migration for investigations, tracked addresses, and risk signals.
 - **Cache and coordination:** Redis, checked by the API readiness endpoint.
 
-The API supports creating and listing investigations, adding and listing tracked addresses, manually syncing Bitcoin and selected EVM transaction history, and investigation-scoped CRUD for analyst-entered risk signals. The wallet form saves addresses and offers on-demand sync; the history dialog shows saved observations and their source. The graph, balances, risk panel, and main transaction table remain demo data. Risk signals retain source provenance but do not populate the demo risk panel or alter its provisional exposure score. The API has no authentication and is intended for local development only. There is no continuous sync, sanctions feed, or commercial screening provider.
+The API supports creating and listing investigations, adding and listing tracked addresses, manually syncing Bitcoin and selected EVM transaction history, and investigation-scoped CRUD for analyst-entered risk signals. The wallet form saves addresses and offers on-demand sync; the history dialog shows saved observations and their source. The direct transfer-links view builds EVM connections from persisted sender/recipient fields and labels untracked counterparties. Bitcoin inputs and outputs do not identify counterparties, so they are excluded from that graph. The overview graph, balances, risk panel, and main transaction table remain demo data. Risk signals retain source provenance but do not populate the demo risk panel or alter its provisional exposure score. The API has no authentication and is intended for local development only. There is no continuous sync, sanctions feed, or commercial screening provider.
 
 - `GET` / `POST` `/api/v1/investigations`
 - `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses`

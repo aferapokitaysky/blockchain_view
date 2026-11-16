@@ -5,7 +5,7 @@
 The repository contains a React, TypeScript, Vite, and Tailwind frontend plus a local Rust/Axum API.
 
 - The wallet form detects Bitcoin address syntax, asks the user to choose among ambiguous EVM networks, and saves investigations and tracked addresses through the local API.
-- The graph, balances, node labels, main transaction table, and risk panel still use static demo data. After a sync, a history dialog shows persisted Bitcoin observations and their source.
+- The overview graph, balances, node labels, main transaction table, and risk panel still use static demo data. The saved-wallet section has a separate on-demand transfer-links view built from persisted EVM sender/recipient fields. It marks counterparties that are not tracked. Bitcoin address-level input/output observations do not identify counterparties and are excluded from this graph.
 - PostgreSQL is the persistent store. Migrations create `investigations`, `tracked_addresses`, `risk_signals`, and `observed_transfers`.
 - Redis is connected to the API readiness check. It is not currently used for cache entries or background jobs.
 - The unauthenticated API is intended for local development only.
@@ -45,4 +45,4 @@ An address string alone is not a reliable cross-chain identity. Every tracked ad
 - Apply bounded provider request timeouts and idempotent upserts by tracked address and transaction hash.
 - Surface provider and observation time so analysts can inspect provenance and freshness.
 - Keep the API bound to loopback for local use. It has no authentication and must not be exposed to an untrusted network.
-- Keep frontend demo data visibly separate from provider-backed records until the UI is connected to the sync endpoint.
+- Keep demo data visibly separate from provider-backed observations: the overview graph remains illustrative, while the separate transfer-links view uses persisted EVM sender/recipient fields.
