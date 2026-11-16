@@ -1392,6 +1392,83 @@ tbody tr:hover {
   box-shadow: 0 20px 70px #0008;
   animation: modal-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+.history-modal {
+  width: min(100%, 620px);
+  max-height: min(88vh, 760px);
+  display: flex;
+  flex-direction: column;
+}
+.history-modal > p {
+  line-height: 1.55;
+  margin-bottom: 12px;
+}
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  border-top: 1px solid #29362f;
+}
+.history-list li {
+  padding: 12px 2px;
+  border-bottom: 1px solid #29362f;
+  animation: card-in 0.2s ease-out both;
+}
+.history-record-top,
+.history-amounts {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.history-record-top {
+  justify-content: space-between;
+}
+.history-record-top code {
+  color: #9be2be;
+  font:
+    600 11px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+.history-modal .history-list small {
+  display: block;
+  margin-top: 5px;
+  color: #84928a;
+  font-size: 9px;
+}
+.history-amounts {
+  margin-top: 8px;
+  font-size: 10px;
+}
+.history-received {
+  color: #76d7a4;
+}
+.history-spent {
+  color: #e0aa84;
+}
+.history-status {
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 8px;
+}
+.history-status.confirmed {
+  color: #8bd9ab;
+  background: #19372a;
+}
+.history-status.pending {
+  color: #e7c285;
+  background: #3a3021;
+}
+.history-empty {
+  padding: 28px 12px;
+  border: 1px dashed #34423a;
+  border-radius: 8px;
+  color: #89968f;
+  text-align: center;
+  font-size: 11px;
+}
 .modal-top {
   display: flex;
   justify-content: space-between;
