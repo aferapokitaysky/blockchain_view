@@ -1,4 +1,7 @@
-import type { SupportedNetwork } from "../networks/detectAddressNetwork";
+import {
+  parseNetworkCatalog,
+  type NetworkCatalog,
+} from "../networks/networkCatalog";
 
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8080"
@@ -15,7 +18,7 @@ type Investigation = {
 export type TrackedAddress = {
   id: string;
   investigation_id: string;
-  network: Lowercase<SupportedNetwork>;
+  network: string;
   address: string;
   label: string | null;
   created_at: string;
@@ -227,7 +230,7 @@ export async function listTrackedWallets(): Promise<TrackedAddress[]> {
 }
 
 export async function trackWallet(input: {
-  network: SupportedNetwork;
+  network: string;
   address: string;
   label?: string;
 }): Promise<TrackedAddress> {
@@ -239,7 +242,7 @@ export async function trackWallet(input: {
       body: JSON.stringify({
         network: input.network.toLowerCase(),
         address:
-          input.network === "Bitcoin"
+          input.network.toLowerCase() === "bitcoin"
             ? input.address.trim()
             : input.address.trim().toLowerCase(),
         label: input.label?.trim() || null,
@@ -248,6 +251,16 @@ export async function trackWallet(input: {
     REQUEST_TIMEOUT_MS,
     "Could not save the wallet. Please try again.",
   );
+}
+
+export async function listSupportedNetworks(): Promise<NetworkCatalog> {
+  const response = await requestJson<unknown>(
+    "/api/v1/networks",
+    undefined,
+    REQUEST_TIMEOUT_MS,
+    "Could not load supported networks. Try again.",
+  );
+  return parseNetworkCatalog(response);
 }
 
 export async function syncWalletHistory(

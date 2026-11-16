@@ -1,10 +1,12 @@
 import type { ObservedTransfer, WalletHistory } from "./api";
 import { formatObservedAmount } from "./formatAssetAmount";
+import { isEvmNetworkId } from "../networks/networkCatalog";
 
 export type TransactionFeedItem = {
   id: string;
   hash: string;
-  network: "Ethereum" | "Bitcoin" | "Base" | "Arbitrum";
+  networkId: string;
+  network: string;
   direction: ObservedTransfer["direction"];
   from: string;
   to: string;
@@ -70,19 +72,28 @@ function getFlow(transfer: ObservedTransfer, trackedWallet: string) {
 
 function getNetworkName(
   network: string,
-): TransactionFeedItem["network"] | null {
-  return NETWORK_NAMES[network] ?? null;
+  namesById: Record<string, string>,
+): string | null {
+  const normalizedId = network.toLowerCase();
+  return (
+    NETWORK_NAMES[normalizedId] ??
+    namesById[normalizedId] ??
+    (isEvmNetworkId(normalizedId)
+      ? `EVM chain ${normalizedId.slice("eip155:".length)}`
+      : null)
+  );
 }
 
 export function buildTransactionFeed(
   histories: WalletHistory[],
+  namesById: Record<string, string> = {},
 ): TransactionFeedItem[] {
   return histories
     .flatMap(({ address, transfers }) => {
       const trackedWallet =
         address.label?.trim() || shortAddress(address.address);
       return transfers.flatMap((transfer) => {
-        const network = getNetworkName(transfer.network);
+        const network = getNetworkName(transfer.network, namesById);
         if (!network) return [];
 
         const flow = getFlow(transfer, trackedWallet);
@@ -90,6 +101,7 @@ export function buildTransactionFeed(
           {
             id: `${transfer.id}:${transfer.event_index ?? "transaction"}`,
             hash: transfer.transaction_hash,
+            networkId: transfer.network.toLowerCase(),
             network,
             direction: transfer.direction,
             from: flow.from,

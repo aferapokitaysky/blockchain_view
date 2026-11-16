@@ -87,6 +87,29 @@ describe("transaction feed", () => {
     expect(item.amount).toBe("+0.5 BTC in · −0.8 BTC out");
   });
 
+  it("keeps catalog network labels for new EVM chains in the feed", () => {
+    const opAddress: TrackedAddress = {
+      ...address,
+      network: "eip155:10",
+    };
+    const [item] = buildTransactionFeed(
+      [
+        history(
+          [
+            transfer({
+              network: "eip155:10",
+              asset: "ETH",
+            }),
+          ],
+          opAddress,
+        ),
+      ],
+      { "eip155:10": "OP Mainnet" },
+    );
+
+    expect(item.network).toBe("OP Mainnet");
+  });
+
   it("sorts newest observations first and skips records from unknown networks", () => {
     const items = buildTransactionFeed([
       history([

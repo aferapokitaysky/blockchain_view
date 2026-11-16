@@ -9,7 +9,8 @@ describe("detectAddressNetwork", () => {
 
     expect(result.status).toBe("ambiguous");
     if (result.status === "ambiguous") {
-      expect(result.candidates).toEqual(["Ethereum", "Base", "Arbitrum"]);
+      expect(result.family).toBe("EVM");
+      expect(result.message).toContain("shared across networks");
     }
   });
 
@@ -18,7 +19,7 @@ describe("detectAddressNetwork", () => {
       detectAddressNetwork("1BoatSLRHtKNngkdXEeobR76b53LETtpyT"),
     ).resolves.toMatchObject({
       status: "detected",
-      network: "Bitcoin",
+      network: "bitcoin",
       confidence: "format-and-checksum",
     });
   });
@@ -28,7 +29,7 @@ describe("detectAddressNetwork", () => {
       detectAddressNetwork("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"),
     ).resolves.toMatchObject({
       status: "detected",
-      network: "Bitcoin",
+      network: "bitcoin",
       confidence: "format-and-checksum",
     });
   });
