@@ -45,8 +45,17 @@ export type ObservedTransfer = {
   provider: string;
   observed_at: string;
   event_index?: number;
-  asset_decimals?: number;
-  asset_contract?: string | null;
+  transfer_kind?: "bitcoin" | "evm_native" | "evm_internal" | "erc20";
+  token_decimals?: number | null;
+  token_contract_address?: string | null;
+  from_address?: string | null;
+  to_address?: string | null;
+  source_host?: string;
+};
+
+export type WalletHistory = {
+  address: TrackedAddress;
+  transfers: ObservedTransfer[];
 };
 
 export class ApiRequestError extends Error {
@@ -223,6 +232,19 @@ export async function listWalletHistory(
     undefined,
     REQUEST_TIMEOUT_MS,
     "Could not load saved wallet history. Please try again.",
+  );
+}
+
+export async function listTrackedWalletHistories(
+  addresses: TrackedAddress[],
+): Promise<WalletHistory[]> {
+  return mapWithConcurrency(
+    addresses,
+    ADDRESS_LIST_CONCURRENCY,
+    async (address) => ({
+      address,
+      transfers: await listWalletHistory(address),
+    }),
   );
 }
 

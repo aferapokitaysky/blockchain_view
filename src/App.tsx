@@ -44,14 +44,17 @@ import {
 import {
   ApiRequestError,
   checkApiHealth,
+  listTrackedWalletHistories,
   listTrackedWallets,
   listWalletHistory,
   syncWalletHistory,
   trackWallet,
   type ObservedTransfer,
   type TrackedAddress,
+  type WalletHistory,
 } from "./features/investigations/api";
-import { formatBitcoinAmount } from "./features/investigations/formatBitcoinAmount";
+import { WalletFlowGraph } from "./features/graph/WalletFlowGraph";
+import { formatObservedAmount } from "./features/investigations/formatAssetAmount";
 import "./App.css";
 
 type Network = "Ethereum" | "Bitcoin" | "Base" | "Arbitrum";
@@ -507,6 +510,11 @@ function App() {
   const [historyRecords, setHistoryRecords] = useState<
     ObservedTransfer[] | null
   >(null);
+  const [flowHistories, setFlowHistories] = useState<WalletHistory[] | null>(
+    null,
+  );
+  const [flowLoading, setFlowLoading] = useState(false);
+  const [flowError, setFlowError] = useState("");
   const [activeTab, setActiveTab] = useState("Overview");
   const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[0];
   const selectedTrackedAddress = trackedAddresses.find(
@@ -629,14 +637,7 @@ function App() {
       setQuery("");
       setWalletLabel("");
       setNetworkChoice("");
-      setNotice(
-        network === "Bitcoin"
-          ? "Bitcoin wallet saved. History can be synced on demand."
-          : `Wallet saved to ${network}. History sync is not available for this network yet.`,
-      );
-      if (network !== "Bitcoin") {
-        window.setTimeout(() => setNotice(""), 5000);
-      }
+      setNotice(`Wallet saved to ${network}. History can be synced on demand.`);
     } catch (error) {
       setFormError(
         error instanceof ApiRequestError
@@ -649,12 +650,7 @@ function App() {
   };
 
   const syncSavedAddress = async () => {
-    if (
-      !selectedTrackedAddress ||
-      selectedTrackedAddress.network !== "bitcoin" ||
-      isSyncing
-    )
-      return;
+    if (!selectedTrackedAddress || isSyncing) return;
     setIsSyncing(true);
     setHistoryError("");
     try {
@@ -673,7 +669,7 @@ function App() {
         ? " The provider page limit was reached; older history may be missing."
         : "";
       setNotice(
-        `Saved ${result.fetched} Bitcoin observations from ${result.provider}.${coverage}`,
+        `Saved ${result.fetched} ${selectedTrackedAddress.network} observations from ${result.provider}.${coverage}`,
       );
     } catch (error) {
       setHistoryError(
@@ -683,6 +679,26 @@ function App() {
       );
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const buildWalletConnections = async () => {
+    if (flowLoading) return;
+    const evmAddresses = trackedAddresses.filter((address) =>
+      ["ethereum", "base", "arbitrum"].includes(address.network),
+    );
+    setFlowLoading(true);
+    setFlowError("");
+    try {
+      setFlowHistories(await listTrackedWalletHistories(evmAddresses));
+    } catch (error) {
+      setFlowError(
+        error instanceof ApiRequestError
+          ? error.message
+          : "Could not load saved EVM history. Try again.",
+      );
+    } finally {
+      setFlowLoading(false);
     }
   };
 
@@ -1263,30 +1279,22 @@ function App() {
                   <button
                     className="button button-primary"
                     onClick={() => void syncSavedAddress()}
-                    disabled={
-                      !selectedTrackedAddress ||
-                      selectedTrackedAddress.network !== "bitcoin" ||
-                      isSyncing
-                    }
+                    disabled={!selectedTrackedAddress || isSyncing}
                   >
-                    {isSyncing ? "Syncing…" : "Sync Bitcoin history"}
+                    {isSyncing ? "Syncing…" : "Sync wallet history"}
                   </button>
                 </div>
                 <p className="address-note">
                   {selectedTrackedAddress?.network === "bitcoin"
                     ? "Saved history is loaded on demand. Sync requests Bitcoin data from the configured Esplora provider."
-                    : "This address is saved. History sync is currently available for Bitcoin only; EVM providers are not connected."}
+                    : "Saved history is loaded on demand from Blockscout. Coverage is bounded to Ethereum, Base and Arbitrum One."}
                 </p>
                 {historyError && (
                   <div className="address-state address-error" role="alert">
                     <span>{historyError}</span>
                     <button
                       className="text-action"
-                      onClick={() =>
-                        selectedTrackedAddress?.network === "bitcoin"
-                          ? void syncSavedAddress()
-                          : void viewSavedHistory()
-                      }
+                      onClick={() => void syncSavedAddress()}
                     >
                       Retry
                     </button>
@@ -1294,6 +1302,40 @@ function App() {
                 )}
               </div>
             )}
+            <div className="flow-graph-action">
+              <div>
+                <strong>Trace direct wallet links</strong>
+                <p>
+                  Loads saved EVM history and connects observed sender and
+                  recipient addresses.
+                </p>
+              </div>
+              <button
+                className="button button-secondary"
+                onClick={() => void buildWalletConnections()}
+                disabled={
+                  flowLoading ||
+                  addressesLoading ||
+                  !trackedAddresses.some((address) =>
+                    ["ethereum", "base", "arbitrum"].includes(address.network),
+                  )
+                }
+              >
+                {flowLoading ? "Loading histories…" : "Build transfer links"}
+              </button>
+            </div>
+            {flowError && (
+              <div className="address-state address-error" role="alert">
+                <span>{flowError}</span>
+                <button
+                  className="text-action"
+                  onClick={() => void buildWalletConnections()}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            {flowHistories && <WalletFlowGraph histories={flowHistories} />}
           </section>
 
           <section className="activity-panel">
@@ -1431,16 +1473,17 @@ function App() {
                 <X size={17} />
               </button>
             </div>
-            <h2 id="history-title">Observed Bitcoin history</h2>
+            <h2 id="history-title">Observed wallet history</h2>
             <p>
               {historyRecords.length} saved transaction observations. Source:{" "}
-              {historyRecords[0]?.provider ?? "Esplora API"}. Values show
-              address-level inputs and outputs, not a transfer between
-              identified owners.
+              {historyRecords[0]?.provider ?? "Configured provider"}.{" "}
+              {historyRecords[0]?.network === "bitcoin"
+                ? "Bitcoin values show address-level inputs and outputs, not transfers between identified owners."
+                : "EVM observations include the transaction endpoints and token event details returned by the provider."}
             </p>
             {historyRecords.length === 0 ? (
               <div className="history-empty">
-                No Bitcoin transactions were returned for this address.
+                No saved transactions were returned for this address.
               </div>
             ) : (
               <ul className="history-list">
@@ -1466,15 +1509,28 @@ function App() {
                         : ""}
                       {` · ${record.provider}`}
                     </small>
+                    {record.network !== "bitcoin" && (
+                      <small className="history-endpoints">
+                        {record.from_address ?? "Unknown sender"} →{" "}
+                        {record.to_address ?? "Unknown recipient"}
+                        {record.token_contract_address
+                          ? ` · ${record.token_contract_address}`
+                          : ""}
+                      </small>
+                    )}
                     <div className="history-amounts">
                       {record.received_amount !== "0" && (
                         <span className="history-received">
-                          Received {formatBitcoinAmount(record.received_amount)}
+                          Received{" "}
+                          {formatObservedAmount(record, record.received_amount)}{" "}
+                          {record.asset}
                         </span>
                       )}
                       {record.spent_amount !== "0" && (
                         <span className="history-spent">
-                          Spent {formatBitcoinAmount(record.spent_amount)}
+                          Spent{" "}
+                          {formatObservedAmount(record, record.spent_amount)}{" "}
+                          {record.asset}
                         </span>
                       )}
                     </div>
