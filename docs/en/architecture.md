@@ -5,7 +5,7 @@
 The repository contains a React, TypeScript, Vite, and Tailwind frontend plus a local Rust/Axum API.
 
 - The wallet form detects Bitcoin address syntax, asks the user to choose among ambiguous EVM networks, and saves investigations and tracked addresses through the local API.
-- The graph, balances, node labels, transaction table, and risk panel still use static demo data. The UI does not render Esplora sync results yet.
+- The graph, balances, node labels, main transaction table, and risk panel still use static demo data. After a sync, a history dialog shows persisted Bitcoin observations and their source.
 - PostgreSQL is the persistent store. Migrations create `investigations`, `tracked_addresses`, `risk_signals`, and `observed_transfers`.
 - Redis is connected to the API readiness check. It is not currently used for cache entries or background jobs.
 - The unauthenticated API is intended for local development only.
@@ -17,13 +17,13 @@ Wallet form / local API request
                |
           Rust + Axum
         /      |       \
- PostgreSQL  Redis   Blockstream Esplora
+ PostgreSQL  Redis   Configured Esplora endpoint
    records   readiness  on-demand Bitcoin history
 ```
 
 The API creates and lists investigations and tracked addresses. A manual `POST` sync request retrieves Bitcoin address history from the configured Esplora-compatible service, normalizes address activity, and upserts observed transfers in PostgreSQL. A separate `GET` returns up to 500 most recent saved transfer rows for that tracked address.
 
-For each transaction, records preserve the provider name (`Blockstream Esplora`), observation time, transaction hash, confirmation state, block metadata, and address-level input/output totals. `spent_amount` is the value in inputs attributed to the tracked address; `received_amount` is the value of outputs to it. Amounts are stored as integer satoshis and serialized as strings to avoid precision loss. These are independent input/output totals, not a net balance change.
+For each transaction, records preserve the configured Esplora host, observation time, transaction hash, confirmation state, block metadata, and address-level input/output totals. `spent_amount` is the value in inputs attributed to the tracked address; `received_amount` is the value of outputs to it. Amounts are stored as integer satoshis and serialized as strings to avoid precision loss. These are independent input/output totals, not a net balance change.
 
 ## Provider scope and limits
 
