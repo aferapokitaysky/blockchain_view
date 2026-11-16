@@ -20,14 +20,36 @@ The interface prototype includes a wallet-flow graph, network filters, a recent-
 - Describe a score as an exposure index, not a probability or a finding of wrongdoing.
 - Make data coverage and freshness visible; never imply that every wallet or chain is monitored.
 
-## Planned stack
+## Current stack
 
-- **Frontend:** React, TypeScript, Vite, Tailwind CSS.
-- **API and processing:** Rust with Axum.
-- **Persistent records:** PostgreSQL.
-- **Cache and short-lived coordination:** Redis.
+- **Frontend:** React, TypeScript, Vite, and Tailwind CSS.
+- **API:** local-only Rust service built with Axum.
+- **Persistent storage:** PostgreSQL, with an initial migration for investigations, tracked addresses, and risk signals.
+- **Cache and coordination:** Redis, checked by the API readiness endpoint.
 
-The backend, database schema, provider adapters, and production risk model are not complete yet.
+The API supports creating and listing investigations, and adding and listing tracked addresses. The frontend still uses bundled demo data and is not connected to the API. The API has no authentication and is intended for local development only. There is no chain indexer, transaction ingestion, sanctions feed, or commercial screening provider. The `risk_signals` table exists, but risk-signal API endpoints are not implemented.
+
+- `GET` / `POST` `/api/v1/investigations`
+- `GET` / `POST` `/api/v1/investigations/{id}/addresses`
+
+## Run the local API
+
+Requirements: Docker Compose.
+
+```sh
+docker compose --env-file .env.example up --build -d
+```
+
+The example file uses local-development credentials. Compose publishes services on loopback; do not expose this unauthenticated API to a network. Check health at:
+
+- `http://127.0.0.1:8080/health/live`
+- `http://127.0.0.1:8080/health/ready` — verifies PostgreSQL and Redis.
+
+Stop the services and preserve database data with:
+
+```sh
+docker compose --env-file .env.example down
+```
 
 ## Run the frontend prototype
 
@@ -42,6 +64,8 @@ The app runs at the local URL printed by Vite. It currently uses bundled demo da
 
 ## Checks
 
+Frontend checks:
+
 ```sh
 npm run lint
 npm run format:check
@@ -49,7 +73,13 @@ npm run test
 npm run build
 ```
 
-Rust checks will be documented when the API crate lands.
+Rust API checks:
+
+```sh
+cargo fmt --manifest-path apps/api/Cargo.toml --all -- --check
+cargo clippy --manifest-path apps/api/Cargo.toml --all-targets --all-features -- -D warnings
+cargo test --manifest-path apps/api/Cargo.toml --all-features
+```
 
 ## Documentation
 
