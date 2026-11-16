@@ -27,12 +27,14 @@ Tracefold задуман как OSINT-инструмент для расслед
 - **Постоянные данные:** PostgreSQL; начальная миграция создаёт таблицы расследований, отслеживаемых адресов и сигналов риска.
 - **Кэш и координация:** Redis; API проверяет его доступность в readiness endpoint.
 
-API умеет создавать и выводить список расследований, добавлять и выводить список отслеживаемых адресов, а также вручную синхронизировать историю Bitcoin-адреса. Форма кошелька использует API для сохранения адреса и предлагает синхронизировать Bitcoin по запросу; отдельное окно истории показывает сохранённые наблюдения и их источник. Граф, балансы, панель риска и основная таблица транзакций пока остаются демоданными. В API нет аутентификации; он предназначен только для локальной разработки. Постоянной синхронизации, синхронизации EVM-сетей, санкционного источника и коммерческого сервиса проверки нет. Таблица `risk_signals` создана, но API для работы с сигналами риска ещё не реализован.
+API умеет создавать и выводить список расследований, добавлять и выводить список отслеживаемых адресов, вручную синхронизировать историю Bitcoin-адреса и выполнять CRUD для сигналов риска, введённых аналитиком. Форма кошелька использует API для сохранения адреса и предлагает синхронизировать Bitcoin по запросу; отдельное окно истории показывает сохранённые наблюдения и их источник. Граф, балансы, панель риска и основная таблица транзакций пока остаются демоданными. Сигналы риска сохраняются вместе с источником, но не попадают в демопанель и не меняют её provisional-оценку. В API нет аутентификации; он предназначен только для локальной разработки. Постоянной синхронизации, синхронизации EVM-сетей, санкционного источника и коммерческого сервиса проверки нет.
 
 - `GET` / `POST` `/api/v1/investigations`
 - `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses`
 - `POST` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/sync`
 - `GET` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/transfers`
+- `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals`
+- `GET` / `PUT` / `DELETE` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}`
 
 ## Синхронизация транзакций Bitcoin
 
@@ -93,8 +95,11 @@ cargo test --manifest-path apps/api/Cargo.toml --all-features
 
 - [Архитектура](docs/ru/architecture.md)
 - [Модель риска](docs/ru/risk-model.md)
+- [API сигналов риска](docs/ru/risk-signals-api.md)
 - [English architecture](docs/en/architecture.md) · [English risk model](docs/en/risk-model.md)
+- [English risk signal API](docs/en/risk-signals-api.md)
 - [Українська архітектура](docs/uk/architecture.md) · [Українська модель ризику](docs/uk/risk-model.md)
+- [Український API сигналів ризику](docs/uk/risk-signals-api.md)
 
 ## Источники данных и лицензирование
 

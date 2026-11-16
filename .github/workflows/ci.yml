@@ -40,18 +40,18 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: tracefold_test
-          POSTGRES_DB: postgres
+          POSTGRES_DB: tracefold_test
+          POSTGRES_USER: tracefold
+          POSTGRES_PASSWORD: tracefold_test_only
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-cmd "pg_isready -U tracefold -d tracefold_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://postgres:tracefold_test@localhost:5432/postgres
+      DATABASE_URL: postgres://tracefold:tracefold_test_only@localhost:5432/tracefold_test
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
