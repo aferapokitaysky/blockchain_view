@@ -1810,6 +1810,13 @@ function App() {
               <WalletFlowGraph
                 histories={flowHistories}
                 networkNames={networkNames}
+                onTrackCounterparty={(network, address) => {
+                  setQuery(address);
+                  setNetworkChoice(network);
+                  setWalletLabel("");
+                  setFormError("");
+                  setShowAdd(true);
+                }}
               />
             )}
           </section>
