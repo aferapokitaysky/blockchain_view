@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkApiHealth,
+  listSupportedNetworks,
   listTrackedWallets,
   listWalletHistory,
   listWalletRiskSignals,
@@ -35,6 +36,53 @@ afterEach(() => {
 });
 
 describe("investigation API client", () => {
+  it("loads and validates the server network catalog", async () => {
+    const catalog = {
+      history_sync_available: true,
+      networks: [
+        {
+          id: "eip155:10",
+          name: "OP Mainnet",
+          family: "evm",
+          chain_id: 10,
+          native_asset: "ETH",
+          explorer_url: "https://explorer.optimism.io/",
+        },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(catalog));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listSupportedNetworks()).resolves.toEqual(catalog);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8080/api/v1/networks",
+      expect.objectContaining({ headers: {} }),
+    );
+  });
+
+  it("rejects malformed network catalog data instead of exposing unknown ids", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        history_sync_available: false,
+        networks: [
+          {
+            id: "custom-chain",
+            name: "Unknown",
+            family: "evm",
+            chain_id: 999,
+            native_asset: "ETH",
+            explorer_url: null,
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listSupportedNetworks()).rejects.toThrow(
+      "Network catalog contains no supported networks",
+    );
+  });
+
   it("creates a default investigation and saves the normalized address details", async () => {
     const fetchMock = vi
       .fn()

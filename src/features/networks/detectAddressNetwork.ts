@@ -1,4 +1,5 @@
-export type SupportedNetwork = "Bitcoin" | "Ethereum" | "Base" | "Arbitrum";
+export type SupportedNetwork =
+  "bitcoin" | "ethereum" | "base" | "arbitrum" | `eip155:${number}`;
 
 export type AddressDetection =
   | { status: "empty"; message: string }
@@ -6,14 +7,13 @@ export type AddressDetection =
   | { status: "unsupported"; message: string }
   | {
       status: "detected";
-      network: "Bitcoin";
+      network: "bitcoin";
       confidence: "format-and-checksum";
       message: string;
     }
   | {
       status: "ambiguous";
       family: "EVM";
-      candidates: readonly ["Ethereum", "Base", "Arbitrum"];
       message: string;
     };
 
@@ -165,9 +165,8 @@ export async function detectAddressNetwork(
     return {
       status: "ambiguous",
       family: "EVM",
-      candidates: ["Ethereum", "Base", "Arbitrum"],
       message:
-        "Valid EVM format. Select the network; the address cannot identify it.",
+        "This EVM address format is shared across networks. Choose a network to continue.",
     };
   }
 
@@ -187,7 +186,7 @@ export async function detectAddressNetwork(
     }
     return {
       status: "detected",
-      network: "Bitcoin",
+      network: "bitcoin",
       confidence: "format-and-checksum",
       message: "Bitcoin mainnet address verified by format and checksum.",
     };
@@ -202,7 +201,7 @@ export async function detectAddressNetwork(
     }
     return {
       status: "detected",
-      network: "Bitcoin",
+      network: "bitcoin",
       confidence: "format-and-checksum",
       message: "Bitcoin mainnet address verified by format and checksum.",
     };
