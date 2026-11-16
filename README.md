@@ -104,7 +104,7 @@ Bitcoin address sync reads transaction history from the public Blockstream Esplo
 
 Issues and pull requests are welcome. Before proposing a provider or scoring change, include its data provenance, license or terms, update behavior, and how an analyst can inspect the evidence. Keep observed facts and inferred relationships distinct.
 
-The repository has not selected a license yet. A license file must be added before others can safely reuse or redistribute the code.
+This project is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the license text.
 
 ## Security and responsible use
 
