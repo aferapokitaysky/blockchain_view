@@ -16,12 +16,11 @@ export type RiskAssessment = {
   disclaimer: string;
 };
 
-/**
- * Converts one observation into its contribution to the aggregate index.
- * Values are provisional and should be calibrated against reviewed cases.
+/** Возвращает вклад наблюдения в общий индекс риска.
+ * Коэффициенты временные и требуют калибровки на проверенных кейсах.
  */
 function weightSignal(signal: RiskSignal): number {
-  // TODO: Calibrate these multipliers for the sources and review policy chosen by the project.
+  // TODO: Настроить коэффициенты после выбора источников и политики проверки.
   const distanceFactor = signal.hops === 0 ? 1 : 1 / (signal.hops + 1);
   const categoryFactor =
     signal.category === "sanctions"
@@ -39,9 +38,8 @@ const SIGNAL_WEIGHTS: Record<RiskSignal["severity"], number> = {
   low: 8,
 };
 
-/**
- * Produces an explainable exposure index from attributed evidence.
- * This is a prioritization aid, not a probability or a compliance decision.
+/** Рассчитывает объяснимый индекс экспозиции по атрибутированным сигналам.
+ * Это приоритет для проверки, а не вероятность или решение о соблюдении требований.
  */
 export function scoreWallet(signals: RiskSignal[]): RiskAssessment {
   const score = Math.min(
