@@ -584,8 +584,25 @@ function App() {
     [activityHistories, activityStatus, selectedTrackedAddress],
   );
   const transactionFeed = useMemo(
-    () => buildTransactionFeed(activityHistories, networkNames),
-    [activityHistories, networkNames],
+    () =>
+      buildTransactionFeed(
+        activityHistories,
+        networkNames,
+        selectedTrackedAddress
+          ? {
+              trackedAddressId: selectedTrackedAddress.id,
+              signals: walletRiskSignals ?? [],
+              screening: screeningResult,
+            }
+          : null,
+      ),
+    [
+      activityHistories,
+      networkNames,
+      selectedTrackedAddress,
+      walletRiskSignals,
+      screeningResult,
+    ],
   );
   const visibleTransfers = transactionFeed.filter(
     (transfer) =>
@@ -1850,13 +1867,16 @@ function App() {
                     <th>Time</th>
                     <th>Status</th>
                     <th>Tracked wallet · source</th>
+                    <th title="Review priority only. Evidence does not establish wrongdoing or legal status.">
+                      Risk score
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {activityStatus === "loading" && (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={8}
                         className="activity-message"
                         role="status"
                       >
@@ -1867,7 +1887,7 @@ function App() {
                   {activityStatus === "error" && (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={8}
                         className="activity-message activity-error"
                       >
                         {activityError}
@@ -1935,6 +1955,42 @@ function App() {
                             <strong>{transfer.trackedWallet}</strong>
                             <small>{transfer.provider}</small>
                           </span>
+                        </td>
+                        <td>
+                          {transfer.riskAssessment ? (
+                            <span
+                              className={`transfer-risk ${transfer.riskAssessment.level}`}
+                              title={[
+                                transfer.riskAssessment.disclaimer,
+                                ...transfer.riskAssessment.contributions.map(
+                                  ({ evidence, basePoints, factor, points }) =>
+                                    `${evidence.title}: ${basePoints} × ${factor} = ${points} points · ${evidence.source}${evidence.reference ? ` · ${evidence.reference}` : ""}`,
+                                ),
+                              ].join("\n")}
+                              aria-label={`Review priority ${transfer.riskAssessment.score}, ${transfer.riskAssessment.level}`}
+                            >
+                              {transfer.riskAssessment.score} ·{" "}
+                              {transfer.riskAssessment.level}
+                            </span>
+                          ) : selectedTrackedAddress?.id ===
+                              transfer.trackedAddressId &&
+                            riskSignalsLoading ? (
+                            <span className="transfer-risk-none">
+                              Loading evidence
+                            </span>
+                          ) : selectedTrackedAddress?.id ===
+                              transfer.trackedAddressId && riskSignalsError ? (
+                            <span
+                              className="transfer-risk-none"
+                              title={riskSignalsError}
+                            >
+                              Evidence unavailable
+                            </span>
+                          ) : (
+                            <span className="transfer-risk-none">
+                              No linked evidence
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
