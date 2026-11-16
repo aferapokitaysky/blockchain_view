@@ -208,12 +208,49 @@ const transfers: Transfer[] = [
   },
 ];
 
-const networkMeta: Record<Network, { color: string; mark: string }> = {
-  Ethereum: { color: "#a98cff", mark: "◇" },
-  Bitcoin: { color: "#f2a84a", mark: "₿" },
-  Base: { color: "#5595ff", mark: "◉" },
-  Arbitrum: { color: "#64c8fa", mark: "◈" },
+const networkMeta: Record<Network, { color: string }> = {
+  Ethereum: { color: "#a98cff" },
+  Bitcoin: { color: "#f2a84a" },
+  Base: { color: "#5595ff" },
+  Arbitrum: { color: "#64c8fa" },
 };
+
+function NetworkShape({ network }: { network: Network }) {
+  return (
+    <g
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {network === "Bitcoin" && (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M10 6.5v11m4-11v11M8.8 9h5a2 2 0 0 1 0 4h-5m0 0h5.7a2 2 0 0 1 0 4H8.8" />
+        </>
+      )}
+      {network === "Ethereum" && (
+        <>
+          <path d="m12 2.5 6.2 9.3L12 15l-6.2-3.2L12 2.5Z" />
+          <path d="m5.8 13.1 6.2 3.2 6.2-3.2L12 21.5l-6.2-8.4Z" />
+        </>
+      )}
+      {network === "Base" && (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M20.5 9.5H12a2.5 2.5 0 1 0 0 5h8.5" />
+        </>
+      )}
+      {network === "Arbitrum" && (
+        <>
+          <path d="m12 2.5 8 4.6v9.8l-8 4.6-8-4.6V7.1l8-4.6Z" />
+          <path d="m8 8 4 8m4-8-4 8m-1.8-2.4h3.6" />
+        </>
+      )}
+    </g>
+  );
+}
 
 function NetworkMark({ network }: { network: Network }) {
   return (
@@ -222,7 +259,9 @@ function NetworkMark({ network }: { network: Network }) {
       style={{ "--network": networkMeta[network].color } as CSSProperties}
       aria-label={network}
     >
-      {networkMeta[network].mark}
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <NetworkShape network={network} />
+      </svg>
     </span>
   );
 }
@@ -350,14 +389,17 @@ function TransferGraph({
                 }
                 filter={node.central ? "url(#node-glow)" : undefined}
               />
-              <text
-                x={node.x}
-                y={node.y + 5}
-                textAnchor="middle"
+              <g
+                transform={`translate(${node.x - 12} ${node.y - 12})`}
                 className="node-mark"
+                style={
+                  {
+                    "--node-color": networkMeta[node.network].color,
+                  } as CSSProperties
+                }
               >
-                {networkMeta[node.network].mark}
-              </text>
+                <NetworkShape network={node.network} />
+              </g>
               <text
                 x={node.x}
                 y={node.y + radius + 19}
