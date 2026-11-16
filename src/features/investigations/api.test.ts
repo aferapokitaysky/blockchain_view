@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkApiHealth,
+  listTrackedWallets,
   listWalletHistory,
   syncWalletHistory,
   trackWallet,
@@ -136,5 +137,57 @@ describe("investigation API client", () => {
       `http://127.0.0.1:8080/api/v1/investigations/${investigation.id}/addresses/${trackedAddress.id}/transfers`,
       expect.objectContaining({ headers: {} }),
     );
+  });
+
+  it("lists saved addresses across investigations and accepts optional EVM fields", async () => {
+    const secondInvestigation = {
+      ...investigation,
+      id: "750e8400-e29b-41d4-a716-446655440000",
+    };
+    const evmAddress = {
+      ...trackedAddress,
+      investigation_id: secondInvestigation.id,
+      network: "base" as const,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([investigation, secondInvestigation]))
+      .mockResolvedValueOnce(jsonResponse([trackedAddress]))
+      .mockResolvedValueOnce(jsonResponse([evmAddress]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listTrackedWallets()).resolves.toEqual([
+      trackedAddress,
+      evmAddress,
+    ]);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `http://127.0.0.1:8080/api/v1/investigations/${investigation.id}/addresses`,
+      expect.objectContaining({ headers: {} }),
+    );
+
+    const transfer = {
+      id: "record-1",
+      tracked_address_id: trackedAddress.id,
+      network: "base",
+      transaction_hash: "0xabc",
+      direction: "inbound",
+      received_amount: "1.2",
+      spent_amount: "0",
+      asset: "USDC",
+      block_height: 12,
+      block_time: null,
+      confirmed: true,
+      provider: "test",
+      observed_at: "2026-11-16T10:00:00Z",
+      event_index: 2,
+      asset_decimals: 6,
+      asset_contract: "0xcontract",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(jsonResponse([transfer])),
+    );
+    await expect(listWalletHistory(evmAddress)).resolves.toEqual([transfer]);
   });
 });
