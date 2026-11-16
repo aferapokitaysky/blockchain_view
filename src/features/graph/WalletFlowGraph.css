@@ -1,0 +1,170 @@
+.flow-path-explorer {
+  padding: 10px 16px 12px;
+  border-bottom: 1px solid #202d2e;
+  background: #111a1b;
+}
+
+.flow-path-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  color: #a6b4ae;
+  font-size: 10px;
+}
+
+.flow-path-controls label {
+  color: #d1ddd7;
+  font-weight: 550;
+}
+
+.flow-path-controls select {
+  min-height: 29px;
+  padding: 4px 24px 4px 9px;
+  border: 1px solid #344745;
+  border-radius: 5px;
+  outline: none;
+  color: #d3dfda;
+  background: #182322;
+  font: inherit;
+}
+
+.flow-path-controls select:focus-visible {
+  border-color: #68cdb8;
+  box-shadow: 0 0 0 2px #68cdb833;
+}
+
+.flow-path-disclaimer {
+  margin: 8px 0 0;
+  color: #84928d;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.flow-node.is-origin .flow-node-core {
+  fill: #65502d;
+  stroke: #e7c478;
+  stroke-width: 2;
+}
+
+.flow-node.is-origin .flow-node-halo {
+  fill: #e4be7133;
+  stroke: #dfbd76;
+  stroke-dasharray: none;
+}
+
+.flow-node.is-reachable .flow-node-halo {
+  fill: #5bbaa622;
+  stroke: #67c8b4;
+  stroke-dasharray: 3 3;
+}
+
+.flow-node.is-dimmed {
+  opacity: 0.2;
+  transition: opacity 180ms ease;
+}
+
+.flow-edge-line.is-dimmed {
+  opacity: 0.07;
+}
+
+.flow-edge-line.is-path {
+  stroke: #e1c77e;
+  stroke-dasharray: 7 5;
+  stroke-width: 3px !important;
+  opacity: 1;
+  filter: drop-shadow(0 0 3px #d7bc6b77);
+  animation-duration: 1.1s;
+}
+
+.flow-path-results {
+  padding: 11px 16px 13px;
+  border-top: 1px solid #202d2e;
+  background: #121c1d;
+}
+
+.flow-path-results-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: #d4dfda;
+  font-size: 10px;
+}
+
+.flow-path-results-heading span,
+.flow-path-results > p {
+  color: #83928c;
+  font-size: 9px;
+}
+
+.flow-path-results > p {
+  margin: 9px 0 0;
+}
+
+.flow-path-results ol {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  margin: 9px 0 0;
+  padding: 0 4px 0 20px;
+}
+
+.flow-path-results li {
+  padding: 1px 0 8px 3px;
+  border-bottom: 1px solid #263332;
+}
+
+.flow-observed-route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  color: #cbd8d1;
+  font-size: 9px;
+}
+
+.flow-observed-route i {
+  color: #d8bd70;
+  font-style: normal;
+}
+
+.flow-observed-evidence {
+  display: grid;
+  gap: 3px;
+  margin-top: 5px;
+  color: #84928c;
+  font-size: 8px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.flow-edge-provenance {
+  display: block;
+  margin-top: 4px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .flow-path-explorer,
+  .flow-path-results {
+    padding-inline: 11px;
+  }
+
+  .flow-path-controls > span {
+    flex-basis: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-edge-line.is-path {
+    animation: none;
+  }
+
+  .flow-node.is-dimmed {
+    transition: none;
+  }
+}
