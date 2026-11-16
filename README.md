@@ -2,7 +2,7 @@
 
 Open-source workspace for exploring how funds move between blockchain addresses.
 
-> **Project status: early prototype.** The overview graph, wallet labels, balances, transaction table, and risk panel still include illustrative demo data. The saved-wallet panel loads Bitcoin and EVM observations from configured providers. Its separate transfer-links view uses exact EVM sender/recipient fields from saved history; it does not infer Bitcoin counterparties. History sync is manual, not continuous. EVM support is limited to Ethereum, Base, and Arbitrum One. Sanctions data and commercial screening are not connected. Do not use demo values for operational or compliance decisions.
+> **Project status: early prototype.** The overview graph, wallet labels, balances, transaction table, and risk panel still include illustrative demo data. The saved-wallet panel loads Bitcoin and EVM observations from configured providers. Its separate transfer-links view uses exact EVM sender/recipient fields from saved history; it does not infer Bitcoin counterparties. History sync is manual, not continuous. EVM history support is limited to Ethereum, Base, and Arbitrum One. Exact-address screening against a locally imported OFAC SDN snapshot is available for Bitcoin and Ethereum; it is not a legal conclusion or a complete compliance check. Do not use demo values for operational or compliance decisions.
 
 **Documentation:** [Русский](README.ru.md) · [Українська](README.uk.md) · [English](README.md)
 
@@ -27,7 +27,7 @@ The interface prototype includes a demo overview graph and an evidence-based EVM
 - **Persistent storage:** PostgreSQL, with an initial migration for investigations, tracked addresses, and risk signals.
 - **Cache and coordination:** Redis, checked by the API readiness endpoint.
 
-The API supports creating and listing investigations, adding and listing tracked addresses, manually syncing Bitcoin and selected EVM transaction history, and investigation-scoped CRUD for analyst-entered risk signals. The wallet form saves addresses and offers on-demand sync; the history dialog shows saved observations and their source. The direct transfer-links view builds EVM connections from persisted sender/recipient fields and labels untracked counterparties. Bitcoin inputs and outputs do not identify counterparties, so they are excluded from that graph. The overview graph, balances, risk panel, and main transaction table remain demo data. Risk signals retain source provenance but do not populate the demo risk panel or alter its provisional exposure score. The API has no authentication and is intended for local development only. There is no continuous sync, sanctions feed, or commercial screening provider.
+The API supports creating and listing investigations, adding and listing tracked addresses, manually syncing Bitcoin and selected EVM transaction history, investigation-scoped CRUD for analyst-entered risk signals, and exact-address screening against an imported OFAC SDN snapshot. The wallet form saves addresses and offers on-demand sync; the history dialog shows saved observations and their source. The direct transfer-links view builds EVM connections from persisted sender/recipient fields and labels untracked counterparties. Bitcoin inputs and outputs do not identify counterparties, so they are excluded from that graph. The overview graph, balances, risk panel, and main transaction table remain demo data. Screening results are not added to the demo score. The API has no authentication and is intended for local development only. The OFAC snapshot is refreshed manually; no commercial screening provider is connected.
 
 - `GET` / `POST` `/api/v1/investigations`
 - `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses`
@@ -35,6 +35,9 @@ The API supports creating and listing investigations, adding and listing tracked
 - `GET` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/transfers`
 - `GET` / `POST` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals`
 - `GET` / `PUT` / `DELETE` `/api/v1/investigations/{investigation_id}/addresses/{address_id}/risk-signals/{signal_id}`
+- `GET` `/api/v1/screening/address?network=ethereum&address=0x...`
+
+See [OFAC screening setup and coverage](docs/en/ofac-screening.md).
 
 ## On-demand transaction sync
 
@@ -96,14 +99,16 @@ cargo test --manifest-path apps/api/Cargo.toml --all-features
 - [Architecture](docs/en/architecture.md)
 - [Risk model](docs/en/risk-model.md)
 - [Risk signal API](docs/en/risk-signals-api.md)
+- [OFAC address screening](docs/en/ofac-screening.md)
 - [Russian architecture](docs/ru/architecture.md) · [Russian risk model](docs/ru/risk-model.md)
 - [Russian risk signal API](docs/ru/risk-signals-api.md)
 - [Ukrainian architecture](docs/uk/architecture.md) · [Ukrainian risk model](docs/uk/risk-model.md)
 - [Ukrainian risk signal API](docs/uk/risk-signals-api.md)
+- [Russian OFAC screening guide](docs/ru/ofac-screening.md) · [Ukrainian OFAC screening guide](docs/uk/ofac-screening.md)
 
 ## Data sources and licensing
 
-Bitcoin and selected EVM address sync read history from Blockstream Esplora and Blockscout on demand. This provides blockchain transaction data, not identity attribution or comprehensive wallet-risk coverage. No sanctions or commercial screening dataset is connected. Future adapters must document provider terms, coverage, update cadence, attribution rules, and any redistribution limits. For sanctions screening, prefer machine-readable official datasets where their terms allow it; OFAC explicitly says its web search interface is intended for individual searches rather than continuous automated queries ([OFAC FAQ](https://ofac.treasury.gov/faqs/287)). Commercial blockchain analytics require a separately licensed provider account.
+Bitcoin and selected EVM address sync read history from Blockstream Esplora and Blockscout on demand. This provides blockchain transaction data, not identity attribution or comprehensive wallet-risk coverage. An optional local import supports exact address checks against the official OFAC SDN snapshot for Bitcoin and Ethereum; it refreshes only when an operator runs the importer. The API does not use OFAC's web search interface for automated queries ([OFAC FAQ](https://ofac.treasury.gov/faqs/287)). Commercial blockchain analytics require a separately licensed provider account.
 
 ## Contributing
 

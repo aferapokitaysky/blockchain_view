@@ -27,13 +27,15 @@ For each transaction, records preserve the configured Esplora host, observation 
 
 The risk-signal API stores analyst-entered evidence scoped to an investigation and tracked address. Each operation verifies both path IDs against the same address record. Signals retain their key, category, severity, source name and reference, observation time, structured details, and creation time. Request bodies are limited to 16 KiB and `details` to 8 KiB. These records are not automatically sourced or verified and do not change the frontend's provisional score.
 
+OFAC SDN screening uses an XML snapshot imported into PostgreSQL by a separate command. The query endpoint returns exact-address matches, snapshot publication/import metadata, or an explicit unsupported/not-imported status. Bitcoin maps to OFAC currency `XBT`; Ethereum maps to `ETH`. Base and Arbitrum return `network_not_covered`. Results are not automatically converted into analyst signals or the demo score. See [OFAC screening setup](ofac-screening.md).
+
 ## Provider scope and limits
 
 - Bitcoin history is fetched only when the sync endpoint is called. There is no scheduled polling or continuous monitoring.
 - Sync requests the initial Esplora history page, which may include unconfirmed mempool entries, then follows confirmed history for at most 20 pages total. This is up to 500 confirmed transactions, plus any mempool entries in the initial response.
 - The transfers endpoint returns at most 500 recent stored records. A sync can fetch more than that when the first page includes mempool entries, so the read endpoint is a bounded recent view.
 - Bitcoin history sync uses Esplora. On-demand EVM history uses Blockscout for Ethereum (1), Base (8453), and Arbitrum One (42161), fetching normal native transactions, successful internal native transfers, and ERC-20 events. Each stream is capped at 10 pages of 50 rows; `may_have_more_history` reports when a provider cursor remains at the cap. This is not a complete index or identity attribution; other EVM networks and token standards are excluded.
-- The API supports create, list, read, replace, and delete operations for analyst-entered signals. No sanctions feed or commercial screening provider is connected, and these records do not alter the demo exposure score.
+- The API supports create, list, read, replace, and delete operations for analyst-entered signals. Exact-address screening uses a locally imported OFAC SDN snapshot for Bitcoin and Ethereum. There is no background refresh or indirect-exposure screening; the snapshot publication date is returned to make its age visible. Results do not alter the demo exposure score.
 
 ## Network identity and address handling
 
