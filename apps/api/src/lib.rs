@@ -10,6 +10,7 @@ pub mod config;
 pub mod error;
 pub mod health;
 pub mod investigations;
+pub mod transfers;
 
 pub type ApiState = health::HealthState;
 
@@ -24,6 +25,14 @@ pub fn app(state: ApiState) -> Router {
         .route(
             "/api/v1/investigations/{investigation_id}/addresses",
             get(addresses::list).post(addresses::create),
+        )
+        .route(
+            "/api/v1/investigations/{investigation_id}/addresses/{address_id}/sync",
+            axum::routing::post(transfers::sync_address),
+        )
+        .route(
+            "/api/v1/investigations/{investigation_id}/addresses/{address_id}/transfers",
+            get(transfers::list_address_transfers),
         )
         .with_state(state)
         .layer(
