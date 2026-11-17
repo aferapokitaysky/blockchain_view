@@ -308,7 +308,7 @@ mod tests {
         }"#;
 
         let networks = parse_blockscout_config(config, false).unwrap();
-        assert_eq!(networks.len(), 7); // Каталог включает четыре fallback-сети.
+        assert_eq!(networks.len(), 8); // Каталог включает шесть fallback-сетей.
         let ethereum = networks
             .iter()
             .find(|network| network.chain_id == Some(1))
