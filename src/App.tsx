@@ -1886,9 +1886,11 @@ function App() {
             </div>
             {trackedAddresses.some(({ network }) => network === "solana") && (
               <p className="network-catalog-state" role="note">
-                Solana coverage is limited to finalized native SOL and parsed
-                SPL Token transfers. Public RPC retention, account references,
-                and unsupported programs can leave gaps.
+                Solana history is partial: finalized SOL transfers and parsed
+                SPL transfers from transactions that reference this wallet.
+                Incoming SPL activity can be missed when the wallet appears only
+                as token-balance owner metadata. Token-account discovery,
+                unsupported programs, and public RPC retention also leave gaps.
               </p>
             )}
             <div className="table-wrap">
