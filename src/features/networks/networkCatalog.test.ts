@@ -9,6 +9,29 @@ import {
 } from "./networkCatalog";
 
 describe("network catalog helpers", () => {
+  it("accepts the Sui mainnet catalog entry and balance-change capability", () => {
+    const catalog = parseNetworkCatalog({
+      history_sync_available: true,
+      networks: [
+        {
+          id: "sui",
+          name: "Sui",
+          family: "sui",
+          chain_id: null,
+          native_asset: "SUI",
+          explorer_url: "https://suiscan.xyz/mainnet/",
+          history_sync_available: true,
+          history_coverage: ["sui-balance-change"],
+        },
+      ],
+    });
+    expect(catalog.networks[0]).toMatchObject({
+      id: "sui",
+      family: "sui",
+      history_coverage: ["sui-balance-change"],
+    });
+  });
+
   it("accepts the Aptos mainnet catalog entry", () => {
     const catalog = parseNetworkCatalog({
       history_sync_available: true,

@@ -1,8 +1,9 @@
 export type NetworkFamily =
-  "evm" | "utxo" | "solana" | "tron" | "xrpl" | "ton" | "aptos";
+  "evm" | "utxo" | "solana" | "tron" | "xrpl" | "ton" | "aptos" | "sui";
 export type NetworkHistoryCapability =
   | "cardano-utxo"
   | "aptos-fa"
+  | "sui-balance-change"
   | "native-trx"
   | "trc20"
   | "xrp-direct-payment"
@@ -31,7 +32,7 @@ export type NetworkCatalog = {
 };
 
 const NETWORK_ID_PATTERN =
-  /^(bitcoin|cardano|ethereum|base|arbitrum|solana|tron|xrpl|ton|aptos|eip155:[1-9]\d*)$/;
+  /^(bitcoin|cardano|ethereum|base|arbitrum|solana|tron|xrpl|ton|aptos|sui|eip155:[1-9]\d*)$/;
 
 export function parseNetworkCatalog(value: unknown): NetworkCatalog {
   if (!value || typeof value !== "object" || !("networks" in value)) {
@@ -67,7 +68,8 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
         entry.family !== "tron" &&
         entry.family !== "xrpl" &&
         entry.family !== "ton" &&
-        entry.family !== "aptos") ||
+        entry.family !== "aptos" &&
+        entry.family !== "sui") ||
       !(
         entry.chain_id === null ||
         (typeof entry.chain_id === "number" &&
@@ -89,6 +91,7 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
             (capability) =>
               capability === "cardano-utxo" ||
               capability === "aptos-fa" ||
+              capability === "sui-balance-change" ||
               capability === "native-trx" ||
               capability === "trc20" ||
               capability === "xrp-direct-payment" ||
@@ -129,7 +132,9 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
       (entry.id === "ton" &&
         (entry.family !== "ton" || entry.chain_id !== null)) ||
       (entry.id === "aptos" &&
-        (entry.family !== "aptos" || entry.chain_id !== null))
+        (entry.family !== "aptos" || entry.chain_id !== null)) ||
+      (entry.id === "sui" &&
+        (entry.family !== "sui" || entry.chain_id !== null))
     ) {
       return [];
     }
@@ -244,6 +249,15 @@ export const LEGACY_NETWORKS: NetworkCatalogEntry[] = [
     native_asset: "APT",
     explorer_url: "https://explorer.aptoslabs.com/",
     history_coverage: ["aptos-fa"],
+  },
+  {
+    id: "sui",
+    name: "Sui",
+    family: "sui",
+    chain_id: null,
+    native_asset: "SUI",
+    explorer_url: "https://suiscan.xyz/mainnet/",
+    history_coverage: ["sui-balance-change"],
   },
 ];
 

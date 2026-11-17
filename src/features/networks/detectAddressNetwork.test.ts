@@ -2,18 +2,25 @@ import { describe, expect, it } from "vitest";
 import { detectAddressNetwork } from "./detectAddressNetwork";
 
 describe("detectAddressNetwork", () => {
-  it("recognizes Aptos 32-byte hex addresses", async () => {
+  it("asks users to choose Aptos or Sui for Move-compatible hex addresses", async () => {
     await expect(
       detectAddressNetwork(`0x${"ab".repeat(32)}`),
     ).resolves.toMatchObject({
-      status: "detected",
-      network: "aptos",
-      confidence: "format",
+      status: "ambiguous",
+      family: "Move-compatible",
     });
     await expect(detectAddressNetwork("0x1")).resolves.toMatchObject({
-      status: "detected",
-      network: "aptos",
-      confidence: "format",
+      status: "ambiguous",
+      family: "Move-compatible",
+    });
+  });
+
+  it("keeps 20-byte hex addresses selectable across EVM, Aptos, and Sui", async () => {
+    await expect(
+      detectAddressNetwork(`0x${"ab".repeat(20)}`),
+    ).resolves.toMatchObject({
+      status: "ambiguous",
+      family: "Hex-compatible",
     });
   });
   it("recognizes TON raw addresses and rejects malformed checksum-friendly candidates", async () => {
@@ -48,15 +55,15 @@ describe("detectAddressNetwork", () => {
       family: "Cardano-compatible",
     });
   });
-  it("does not guess which EVM chain owns a valid address", async () => {
+  it("does not guess the network for a hex format shared by EVM and Move", async () => {
     const result = await detectAddressNetwork(
       "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
     );
 
     expect(result.status).toBe("ambiguous");
     if (result.status === "ambiguous") {
-      expect(result.family).toBe("EVM");
-      expect(result.message).toContain("shared across networks");
+      expect(result.family).toBe("Hex-compatible");
+      expect(result.message).toContain("EVM, Aptos, or Sui");
     }
   });
 
@@ -118,10 +125,10 @@ describe("detectAddressNetwork", () => {
     ).resolves.toMatchObject({ status: "unsupported" });
   });
 
-  it("recognizes shortened Aptos hex addresses instead of rejecting them as malformed EVM", async () => {
+  it("routes shortened Move addresses to explicit Aptos or Sui selection", async () => {
     await expect(detectAddressNetwork("0x1234")).resolves.toMatchObject({
-      status: "detected",
-      network: "aptos",
+      status: "ambiguous",
+      family: "Move-compatible",
     });
   });
 

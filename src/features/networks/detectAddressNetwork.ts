@@ -2,6 +2,7 @@ export type SupportedNetwork =
   | "bitcoin"
   | "cardano"
   | "aptos"
+  | "sui"
   | "tron"
   | "solana"
   | "xrpl"
@@ -39,9 +40,13 @@ export type AddressDetection =
       message: string;
     }
   | {
-      status: "detected";
-      network: "aptos";
-      confidence: "format";
+      status: "ambiguous";
+      family: "Move-compatible";
+      message: string;
+    }
+  | {
+      status: "ambiguous";
+      family: "Hex-compatible";
       message: string;
     }
   | {
@@ -320,23 +325,22 @@ export async function detectAddressNetwork(
     if (isHexAddress(address)) {
       return {
         status: "ambiguous",
-        family: "EVM",
+        family: "Hex-compatible",
         message:
-          "This EVM address format is shared across networks. Choose a network to continue.",
+          "This address format can belong to EVM, Aptos, or Sui. Choose a network to continue.",
       };
     }
     if (/^0x[\da-f]{1,64}$/i.test(address)) {
       return {
-        status: "detected",
-        network: "aptos",
-        confidence: "format",
+        status: "ambiguous",
+        family: "Move-compatible",
         message:
-          "This hexadecimal account address fits Aptos. Aptos addresses are padded to 32 bytes when saved.",
+          "This hexadecimal account address fits Aptos or Sui. Choose the network to continue.",
       };
     }
     return {
       status: "invalid",
-      message: "Invalid EVM or Aptos address format.",
+      message: "Invalid hexadecimal account or EVM address format.",
     };
   }
 

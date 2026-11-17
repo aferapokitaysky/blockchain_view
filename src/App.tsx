@@ -218,6 +218,8 @@ const networkMeta: Record<string, { color: string }> = {
   arbitrum: { color: "#64c8fa" },
   Solana: { color: "#a98cff" },
   solana: { color: "#a98cff" },
+  sui: { color: "#68d5c2" },
+  Sui: { color: "#68d5c2" },
   TRON: { color: "#ff5964" },
   tron: { color: "#ff5964" },
   "XRP Ledger": { color: "#20a8d8" },
@@ -251,6 +253,13 @@ function NetworkShape({ network }: { network: Network }) {
         <>
           <path d="m12 2.5 6.2 9.3L12 15l-6.2-3.2L12 2.5Z" />
           <path d="m5.8 13.1 6.2 3.2 6.2-3.2L12 21.5l-6.2-8.4Z" />
+        </>
+      )}
+      {normalizedNetwork === "sui" && (
+        <>
+          <path d="m12 2.5 7 4v8l-7 4-7-4v-8l7-4Z" />
+          <path d="m8 9 4 2.3L16 9m-8 4 4 2.3 4-2.3" />
+          <path d="M12 11.3v4" />
         </>
       )}
       {normalizedNetwork === "base" && (
@@ -304,7 +313,7 @@ function NetworkShape({ network }: { network: Network }) {
           <circle cx="20" cy="14" r="1.2" fill="currentColor" />
         </>
       )}
-      {!networkMeta[network] && (
+      {!networkMeta[normalizedNetwork] && (
         <>
           <circle cx="12" cy="12" r="9" />
           <path d="M7 12h10M12 7v10" />
@@ -609,15 +618,24 @@ function App() {
     if (addressDetection.status !== "ambiguous") return [];
     return addressDetection.family === "EVM"
       ? evmNetworks
-      : networkCatalog.networks.filter(({ family, id }) =>
-          addressDetection.family === "Tron-compatible"
-            ? family === "tron"
-            : addressDetection.family === "Solana-compatible"
-              ? family === "solana"
-              : addressDetection.family === "Cardano-compatible"
-                ? id === "cardano"
-                : family === "solana",
-        );
+      : addressDetection.family === "Hex-compatible"
+        ? [
+            ...evmNetworks,
+            ...networkCatalog.networks.filter(
+              ({ family }) => family === "aptos" || family === "sui",
+            ),
+          ]
+        : networkCatalog.networks.filter(({ family, id }) =>
+            addressDetection.family === "Tron-compatible"
+              ? family === "tron"
+              : addressDetection.family === "Solana-compatible"
+                ? family === "solana"
+                : addressDetection.family === "Cardano-compatible"
+                  ? id === "cardano"
+                  : addressDetection.family === "Move-compatible"
+                    ? family === "aptos" || family === "sui"
+                    : family === "solana",
+          );
   }, [addressDetection, evmNetworks, networkCatalog.networks]);
   const selectedNetworkChoice = networkCatalog.networks.find(
     ({ id }) => id === networkChoice,
@@ -2406,7 +2424,7 @@ function App() {
                   autoFocus
                   placeholder="0x…, bc1…, T… or address"
                   required
-                  minLength={8}
+                  minLength={/^0x[\da-f]{1,64}$/i.test(query) ? 3 : 8}
                   value={query}
                   onChange={(event) => handleSearch(event.target.value)}
                   disabled={isSubmitting}

@@ -78,6 +78,36 @@ describe("wallet flow graph", () => {
     ]);
   });
 
+  it("keeps Sui net-balance participant links out of directed path analysis", () => {
+    const address = `0x${"1".repeat(64)}`;
+    const history: WalletHistory = {
+      address: { ...trackedAddress, network: "sui", address },
+      transfers: [],
+      relationships: [
+        {
+          id: "relationship-sui",
+          tracked_address_id: trackedAddress.id,
+          network: "sui",
+          transaction_hash: "87g1nVBJvogvTdVsJTHGx6ptCpo6KXSXKRZEoMqJPibm",
+          counterparty_address: `0x${"2".repeat(64)}`,
+          relationship_type: "same_transaction",
+          participant_role: "input",
+          block_height: 329996453,
+          block_time: "2026-10-04T01:21:28.591Z",
+          confirmed: true,
+          provider: "Sui GraphQL RPC",
+          source_host: "graphql.mainnet.sui.io",
+          observed_at: "2026-10-04T01:21:28.591Z",
+        },
+      ],
+    };
+
+    const graph = buildWalletFlowGraph([history]);
+    const origin = `sui:${address}`;
+    expect(graph.edges).toMatchObject([{ kind: "same_transaction" }]);
+    expect(findObservedPaths(graph.edges, origin, 1).paths).toEqual([]);
+  });
+
   it("allows snapshots when either evidence source exists", () => {
     expect(
       hasGraphEvidence({

@@ -61,7 +61,8 @@ export type ObservedTransfer = {
     | "xrpl_native"
     | "cardano_native"
     | "cardano_asset"
-    | "aptos_fungible";
+    | "aptos_fungible"
+    | "sui_balance_change";
   source_host?: string;
   token_decimals?: number | null;
   token_contract_address?: string | null;
@@ -72,7 +73,7 @@ export type ObservedTransfer = {
 export type ObservedRelationship = {
   id: string;
   tracked_address_id: string;
-  network: "cardano";
+  network: "cardano" | "sui";
   transaction_hash: string;
   counterparty_address: string;
   relationship_type: "same_transaction";
@@ -360,7 +361,7 @@ export async function listWalletHistory(
 async function listWalletHistoryRecord(
   address: TrackedAddress,
 ): Promise<Pick<WalletHistory, "transfers" | "relationships">> {
-  if (address.network !== "cardano") {
+  if (address.network !== "cardano" && address.network !== "sui") {
     return {
       transfers: await listWalletHistory(address),
       relationships: [],
@@ -370,7 +371,7 @@ async function listWalletHistoryRecord(
     `/api/v1/investigations/${address.investigation_id}/addresses/${address.id}/history`,
     undefined,
     REQUEST_TIMEOUT_MS,
-    "Could not load saved Cardano history and participants. Please try again.",
+    "Could not load saved wallet history and participants. Please try again.",
   );
 }
 
