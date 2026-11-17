@@ -106,6 +106,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "base58"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6107fe1be6682a68940da878d9e9f5e90ca5745b3dec9fd1bb393c8777d4f581"
+
+[[package]]
 name = "base58ck"
 version = "0.1.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -367,6 +373,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
+name = "crunchy"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
+
+[[package]]
 name = "crypto-common"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -375,6 +387,12 @@ dependencies = [
  "generic-array",
  "typenum",
 ]
+
+[[package]]
+name = "cryptoxide"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "382ce8820a5bb815055d3553a610e8cb542b2d767bbacea99038afda96cd760d"
 
 [[package]]
 name = "der"
@@ -612,6 +630,17 @@ dependencies = [
  "r-efi",
  "rand_core 0.10.1",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "half"
+version = "2.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b"
+dependencies = [
+ "cfg-if",
+ "crunchy",
+ "zerocopy",
 ]
 
 [[package]]
@@ -1077,6 +1106,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5848f5a9e8117cf94f2f90faac24a87ff81600ff8628c1e3deaab572e76bfa1"
 
 [[package]]
+name = "minicbor"
+version = "0.26.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a309f581ade7597820083bc275075c4c6986e57e53f8d26f88507cfefc8c987"
+dependencies = [
+ "half",
+ "minicbor-derive",
+]
+
+[[package]]
+name = "minicbor-derive"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9882ef5c56df184b8ffc107fc6c61e33ee3a654b021961d790a78571bb9d67a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "mio"
 version = "1.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1156,6 +1206,48 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+
+[[package]]
+name = "pallas-addresses"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7da690b8fc6776782e0a0b069cddcebed114807e7373b46620f6d8e899cd2ee5"
+dependencies = [
+ "base58",
+ "bech32",
+ "crc",
+ "cryptoxide",
+ "hex",
+ "pallas-codec",
+ "pallas-crypto",
+ "thiserror",
+]
+
+[[package]]
+name = "pallas-codec"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02127db5290c42ea6f6138896acf6196c8a6783d9d26dfe6870fd5ea0ce31440"
+dependencies = [
+ "hex",
+ "minicbor",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "pallas-crypto"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02480d918380d37a4e21c1d84c984f79bdc5e439f1de97ee1e08f1451b26f1c5"
+dependencies = [
+ "cryptoxide",
+ "hex",
+ "pallas-codec",
+ "rand_core 0.10.1",
+ "serde",
+ "thiserror",
+]
 
 [[package]]
 name = "parking"
@@ -2213,7 +2305,9 @@ dependencies = [
  "bitcoin",
  "bs58",
  "chrono",
+ "crc",
  "dotenvy",
+ "pallas-addresses",
  "quick-xml",
  "redis",
  "reqwest",
