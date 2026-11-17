@@ -8,6 +8,10 @@
 
 Для кожної мережі API використовує перевірений HTTPS URL екземпляра Blockscout із `instance_url_from_config` або explorer, для якого явно вказано `hostedBy: blockscout`. API не надсилає запити на довільні адреси explorer-ів і не переходить за перенаправленнями. Якщо задано `BLOCKSCOUT_API_KEY`, використовується налаштований multichain API; користувацький `BLOCKSCOUT_BASE_URL` також перевизначає адресу джерела. `history_sync_available` означає, що маршрут провайдера налаштований, але доступність не перевірялася. Окремі explorer-и можуть обмежувати запити, блокувати автоматизацію, повертати HTML challenge або неповну історію; такі відповіді дають загальну помилку недоступності провайдера й не зберігаються як спостереження.
 
+Якщо chain ID відсутній у каталозі Blockscout, API може додати мережу з фіксованого списку Etherscan V2 mainnet. Довільні chain ID та URL провайдера з запиту не приймаються, а джерело мереж, уже наявних у каталозі Blockscout, не змінюється. Перелік базується на [офіційному списку підтримуваних мереж Etherscan](https://docs.etherscan.io/supported-chains) і містить BNB Smart Chain, Polygon PoS, OP Mainnet, Avalanche C-Chain, Linea, Celo, Mantle, Gnosis та інші mainnet. Каталог повертає прапорці `requires_api_key` і `requires_paid_tier`. Задай `ETHERSCAN_API_KEY` у backend-оточенні; без ключа мережі залишаються видимими, але `history_sync_available` має значення `false`. Для BNB, OP, Avalanche і Gnosis потрібен платний тариф Etherscan; встановлюй `ETHERSCAN_ENABLE_PAID_CHAINS=true` лише якщо ключ має доступ до цих мереж. За замовчуванням значення `false`, тому платний тариф не впливає на синхронізацію решти мереж.
+
+Etherscan V2 запитує `txlist`, `txlistinternal` і `tokentx`: зберігаються нативні транзакції, внутрішні виклики з передачею нативної валюти та перекази ERC-20. NFT-перекази й інші події контрактів не декодуються. Кожен потік обмежений 10 сторінками по 100 записів на синхронізацію. API та sync-worker використовують спільний Redis gate `SET NX PX`, який встановлює інтервал 400 мс для налаштованого API-ключа; якщо Redis недоступний, запит Etherscan не виконується. Це нижче офіційного ліміту безплатного тарифу ([ліміти запитів](https://docs.etherscan.io/rate-limits)); для платних тарифів діє той самий консервативний інтервал. У відповіді `tokentx` провайдер не документує індекс лога; адаптер створює стабільний локальний індекс події з полів переказу, щоб не об’єднувати кілька записів однієї транзакції. Це ключ дедуплікації, а не on-chain log index. Etherscan вимагає передавати API-ключ у query string: зберігай його лише в backend-оточенні, не записуй повні URL запитів у журнали й не додавай ключ у frontend. Налаштований маршрут не гарантує доступ до тарифу, доступність провайдера чи повноту старої історії.
+
 ## Історія TRON і покриття
 
 Вбудована мережа `tron` використовує TronGrid mainnet за адресою `https://api.trongrid.io`. За потреби задай `TRONGRID_BASE_URL` як кореневу URL сумісного джерела TronGrid і `TRONGRID_API_KEY`. Ключ backend надсилає лише в заголовку `TRON-PRO-API-KEY`; він не додається до URL і не передається frontend-у. Не додавай `TRON-PRO-API-KEY` до браузерного коду.
@@ -36,7 +40,7 @@
 docker compose up --build
 ```
 
-Для запуску поза Compose потрібні `DATABASE_URL`, `REDIS_URL`, `BITCOIN_ESPLORA_URL`, `XRPL_RPC_URL` і змінні Blockscout:
+Для запуску поза Compose потрібні `DATABASE_URL`, `REDIS_URL`, `BITCOIN_ESPLORA_URL`, `XRPL_RPC_URL`, змінні Blockscout і, за потреби, Etherscan:
 
 ```bash
 cargo run --manifest-path apps/api/Cargo.toml --bin sync_worker
