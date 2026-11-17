@@ -85,7 +85,7 @@ async fn investigation_and_address_routes_round_trip_through_postgres(pool: PgPo
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn network_constraint_accepts_legacy_and_valid_eip155_ids(pool: PgPool) {
+async fn network_constraint_accepts_legacy_eip155_and_solana_ids(pool: PgPool) {
     let investigation_id = sqlx::query_scalar::<_, Uuid>(
         "INSERT INTO investigations (name) VALUES ('Network constraint') RETURNING id",
     )
@@ -93,7 +93,14 @@ async fn network_constraint_accepts_legacy_and_valid_eip155_ids(pool: PgPool) {
     .await
     .expect("investigation should be inserted");
 
-    for network in ["ethereum", "bitcoin", "base", "arbitrum", "eip155:10"] {
+    for network in [
+        "ethereum",
+        "bitcoin",
+        "base",
+        "arbitrum",
+        "eip155:10",
+        "solana",
+    ] {
         sqlx::query("INSERT INTO tracked_addresses (investigation_id, network, address) VALUES ($1, $2, 'address')")
             .bind(investigation_id)
             .bind(network)
@@ -117,6 +124,7 @@ async fn network_constraint_rejects_malformed_or_unsupported_ids(pool: PgPool) {
         "eip155:01",
         "eip155:18446744073709551616",
         "eip155:-1",
+        "solana-mainnet",
         "polygon",
     ] {
         let result = sqlx::query("INSERT INTO tracked_addresses (investigation_id, network, address) VALUES ($1, $2, 'address')")
@@ -128,6 +136,48 @@ async fn network_constraint_rejects_malformed_or_unsupported_ids(pool: PgPool) {
     }
 }
 
+#[sqlx::test(migrations = "./migrations")]
+async fn solana_spl_mint_constraint_accepts_base58_mints_and_rejects_invalid_values(pool: PgPool) {
+    let investigation_id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO investigations (name) VALUES ('Solana mint constraint') RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("investigation should be inserted");
+    let address_id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO tracked_addresses (investigation_id, network, address) \
+         VALUES ($1, 'solana', 'So11111111111111111111111111111111111111112') RETURNING id",
+    )
+    .bind(investigation_id)
+    .fetch_one(&pool)
+    .await
+    .expect("Solana address should be inserted");
+
+    let mint = "So11111111111111111111111111111111111111112";
+    sqlx::query(
+        "INSERT INTO observed_transfers \
+         (tracked_address_id, network, transaction_hash, event_index, transfer_kind, direction, \
+          asset, token_contract_address, token_decimals, confirmed, provider, source_host) \
+         VALUES ($1, 'solana', 'signature-valid', 0, 'solana_spl', 'inbound', $2, $2, 9, TRUE, 'Solana RPC', 'rpc.example.org')",
+    )
+    .bind(address_id)
+    .bind(mint)
+    .execute(&pool)
+    .await
+    .expect("canonical Solana mint should be accepted");
+
+    let invalid = sqlx::query(
+        "INSERT INTO observed_transfers \
+         (tracked_address_id, network, transaction_hash, event_index, transfer_kind, direction, \
+          asset, token_contract_address, token_decimals, confirmed, provider, source_host) \
+         VALUES ($1, 'solana', 'signature-invalid', 0, 'solana_spl', 'inbound', 'invalid', '0OIl', 9, TRUE, 'Solana RPC', 'rpc.example.org')",
+    )
+    .bind(address_id)
+    .execute(&pool)
+    .await;
+    assert!(invalid.is_err(), "invalid Solana mint must be rejected");
+}
+
 fn test_state(database: PgPool) -> ApiState {
     ApiState {
         database,
@@ -135,6 +185,7 @@ fn test_state(database: PgPool) -> ApiState {
             .expect("тестовый Redis URL должен разбираться"),
         http_client: reqwest::Client::new(),
         bitcoin_esplora_url: "https://blockstream.info/api".into(),
+        solana_rpc_url: "http://127.0.0.1:1".into(),
         blockscout: tracefold_api::evm_sync::BlockscoutClient::new(
             "http://127.0.0.1:1",
             None,

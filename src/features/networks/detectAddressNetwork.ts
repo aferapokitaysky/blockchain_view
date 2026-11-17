@@ -1,5 +1,5 @@
 export type SupportedNetwork =
-  "bitcoin" | "ethereum" | "base" | "arbitrum" | `eip155:${number}`;
+  "bitcoin" | "solana" | "ethereum" | "base" | "arbitrum" | `eip155:${number}`;
 
 export type AddressDetection =
   | { status: "empty"; message: string }
@@ -13,7 +13,7 @@ export type AddressDetection =
     }
   | {
       status: "ambiguous";
-      family: "EVM";
+      family: "EVM" | "Solana-compatible";
       message: string;
     };
 
@@ -35,7 +35,7 @@ function isHexAddress(address: string): boolean {
 }
 
 function decodeBase58(address: string): Uint8Array | null {
-  if (address.length < 26 || address.length > 35) return null;
+  if (address.length < 26 || address.length > 44) return null;
 
   let value = 0n;
   for (const character of address) {
@@ -57,7 +57,7 @@ function decodeBase58(address: string): Uint8Array | null {
   while (address[leadingZeroes] === "1") leadingZeroes += 1;
   const decoded = new Uint8Array(leadingZeroes + bytes.length);
   decoded.set(bytes, leadingZeroes);
-  return decoded.length === 25 ? decoded : null;
+  return decoded;
 }
 
 async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
@@ -69,7 +69,12 @@ async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
 
 async function isValidBase58CheckAddress(address: string): Promise<boolean> {
   const decoded = decodeBase58(address);
-  if (!decoded || (decoded[0] !== 0x00 && decoded[0] !== 0x05)) return false;
+  if (
+    !decoded ||
+    decoded.length !== 25 ||
+    (decoded[0] !== 0x00 && decoded[0] !== 0x05)
+  )
+    return false;
 
   const payload = decoded.slice(0, 21);
   const firstHash = await sha256(payload);
@@ -193,17 +198,29 @@ export async function detectAddressNetwork(
   }
 
   if (/^[13]/.test(address)) {
-    if (!(await isValidBase58CheckAddress(address))) {
+    if (await isValidBase58CheckAddress(address)) {
       return {
-        status: "invalid",
-        message: "Invalid Bitcoin address or checksum.",
+        status: "detected",
+        network: "bitcoin",
+        confidence: "format-and-checksum",
+        message: "Bitcoin mainnet address verified by format and checksum.",
       };
     }
+  }
+
+  if (decodeBase58(address)?.length === 32) {
     return {
-      status: "detected",
-      network: "bitcoin",
-      confidence: "format-and-checksum",
-      message: "Bitcoin mainnet address verified by format and checksum.",
+      status: "ambiguous",
+      family: "Solana-compatible",
+      message:
+        "This address has a 32-byte Solana-compatible public-key format. Select Solana to continue; format alone does not prove the network.",
+    };
+  }
+
+  if (/^[13]/.test(address)) {
+    return {
+      status: "invalid",
+      message: "Invalid Bitcoin address or checksum.",
     };
   }
 

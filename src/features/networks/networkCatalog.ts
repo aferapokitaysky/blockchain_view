@@ -1,4 +1,4 @@
-export type NetworkFamily = "evm" | "utxo";
+export type NetworkFamily = "evm" | "utxo" | "solana";
 
 export type NetworkCatalogEntry = {
   id: string;
@@ -15,7 +15,8 @@ export type NetworkCatalog = {
   history_sync_available?: boolean;
 };
 
-const NETWORK_ID_PATTERN = /^(bitcoin|ethereum|base|arbitrum|eip155:[1-9]\d*)$/;
+const NETWORK_ID_PATTERN =
+  /^(bitcoin|ethereum|base|arbitrum|solana|eip155:[1-9]\d*)$/;
 
 export function parseNetworkCatalog(value: unknown): NetworkCatalog {
   if (!value || typeof value !== "object" || !("networks" in value)) {
@@ -42,7 +43,9 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
       !NETWORK_ID_PATTERN.test(entry.id) ||
       typeof entry.name !== "string" ||
       !entry.name.trim() ||
-      (entry.family !== "evm" && entry.family !== "utxo") ||
+      (entry.family !== "evm" &&
+        entry.family !== "utxo" &&
+        entry.family !== "solana") ||
       !(
         entry.chain_id === null ||
         (typeof entry.chain_id === "number" &&
@@ -73,7 +76,9 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
           (entry.id.startsWith("eip155:") &&
             Number(entry.id.slice("eip155:".length)) !== entry.chain_id))) ||
       (entry.id === "bitcoin" &&
-        (entry.family !== "utxo" || entry.chain_id !== null))
+        (entry.family !== "utxo" || entry.chain_id !== null)) ||
+      (entry.id === "solana" &&
+        (entry.family !== "solana" || entry.chain_id !== null))
     ) {
       return [];
     }
@@ -134,6 +139,14 @@ export const LEGACY_NETWORKS: NetworkCatalogEntry[] = [
     chain_id: 42161,
     native_asset: "ETH",
     explorer_url: "https://arbitrum.blockscout.com/",
+  },
+  {
+    id: "solana",
+    name: "Solana",
+    family: "solana",
+    chain_id: null,
+    native_asset: "SOL",
+    explorer_url: "https://explorer.solana.com/",
   },
 ];
 

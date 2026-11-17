@@ -13,6 +13,7 @@ pub(crate) const MAX_CATALOG_BYTES: usize = 2 * 1024 * 1024;
 pub enum NetworkFamily {
     Evm,
     Utxo,
+    Solana,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -164,6 +165,16 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             history_sync_available: true,
             api_base_url: None,
         },
+        NetworkInfo {
+            id: "solana".into(),
+            name: "Solana".into(),
+            family: NetworkFamily::Solana,
+            chain_id: None,
+            native_asset: "SOL".into(),
+            explorer_url: Some("https://explorer.solana.com/".into()),
+            history_sync_available: true,
+            api_base_url: None,
+        },
     ];
     networks.sort_by_key(|network| network.name.to_lowercase());
     networks
@@ -195,10 +206,12 @@ fn legacy_id(chain_id: u64) -> Option<&'static str> {
 fn merge_legacy_fallbacks(networks: &mut Vec<NetworkInfo>) {
     let fallbacks = fallback_catalog();
     for fallback in fallbacks {
-        if !networks
-            .iter()
-            .any(|network| network.id == fallback.id || network.chain_id == fallback.chain_id)
-        {
+        if !networks.iter().any(|network| {
+            network.id == fallback.id
+                || fallback
+                    .chain_id
+                    .is_some_and(|chain_id| network.chain_id == Some(chain_id))
+        }) {
             networks.push(fallback);
         }
     }
@@ -230,7 +243,11 @@ fn valid_public_https_base_url(value: &str) -> Option<Url> {
 pub(crate) async fn list(
     State(state): State<ApiState>,
 ) -> Result<Json<NetworkCatalogResponse>, ApiError> {
-    let networks = state.blockscout.network_catalog().await;
+    let mut networks = state.blockscout.network_catalog().await;
+    if let Some(solana) = networks.iter_mut().find(|network| network.id == "solana") {
+        solana.history_sync_available =
+            crate::solana_sync::rpc_is_configured(&state.solana_rpc_url);
+    }
     let history_sync_available = networks
         .iter()
         .any(|network| network.history_sync_available);
@@ -258,7 +275,7 @@ mod tests {
         }"#;
 
         let networks = parse_blockscout_config(config, false).unwrap();
-        assert_eq!(networks.len(), 5); // Ethereum, OP Mainnet, Bitcoin, Base и Arbitrum.
+        assert_eq!(networks.len(), 6); // Каталог включает Bitcoin и Solana fallback сети.
         let ethereum = networks
             .iter()
             .find(|network| network.chain_id == Some(1))
@@ -323,6 +340,11 @@ mod tests {
                 .any(|network| network.id == "bitcoin" && network.history_sync_available)
         );
         assert!(fallback.iter().any(|network| network.id == "arbitrum"));
+        assert!(fallback.iter().any(|network| {
+            network.id == "solana"
+                && network.family == NetworkFamily::Solana
+                && network.history_sync_available
+        }));
     }
 
     #[tokio::test]
@@ -413,7 +435,9 @@ mod tests {
         use axum::{body::to_bytes, http::Request};
         use tower::ServiceExt;
 
-        let response = crate::app(crate::health::unavailable_state())
+        let mut state = crate::health::unavailable_state();
+        state.solana_rpc_url = "http://rpc.example.org".into();
+        let response = crate::app(state)
             .oneshot(
                 Request::builder()
                     .uri("/api/v1/networks")
@@ -430,5 +454,11 @@ mod tests {
         assert!(networks.iter().any(|network| network["id"] == "bitcoin"));
         assert!(networks.iter().any(|network| network["id"] == "ethereum"));
         assert!(networks.iter().any(|network| network["id"] == "arbitrum"));
+        assert!(networks.iter().any(|network| {
+            network["id"] == "solana"
+                && network["family"] == "solana"
+                && network["chain_id"].is_null()
+                && network["history_sync_available"] == false
+        }));
     }
 }
