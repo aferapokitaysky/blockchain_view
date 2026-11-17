@@ -24,11 +24,19 @@ Sync uses Solana JSON-RPC `getSignaturesForAddress` at `finalized` commitment, t
 
 This is intentionally not a complete Solana index. The official [`getSignaturesForAddress`](https://solana.com/docs/rpc/http/getsignaturesforaddress) method searches transactions whose `accountKeys` reference the queried public key. An incoming SPL transaction can mention the wallet only as `owner` in token-balance metadata while its token account is the referenced key; that transaction will not be discovered by querying the owner address. The standard RPC flow also does not enumerate a wallet's complete current or historical token-account set, and closed token accounts cannot be reconstructed by this scanner. Other programs (including swaps, NFTs, and staking) and nonstandard instructions are not decoded. Public RPC is shared infrastructure and can rate-limit or block requests; an HTTP error fails the current sync and is retried on a later manual or scheduled sync, while providers may also prune older ledger data. For broader owner-level or historical token coverage, configure an indexed provider after verifying its coverage and terms. The [`getTransaction`](https://solana.com/docs/rpc/http/gettransaction) request uses the documented transaction version `0`.
 
+## XRP Ledger history and coverage
+
+The built-in `xrpl` network uses `XRPL_RPC_URL`, defaulting to Ripple's public full-history endpoint `https://s2.ripple.com:51234/`. Configure a trusted HTTPS JSON-RPC endpoint for regular use. Sync uses `account_tx` marker pagination with independent cursors: a fresh head scan finds recent transactions, a pending head marker continues catch-up until the last saved transaction is found, and a separate bounded backfill walks older pages. Each run scans at most two fresh head pages, one pending head page, and one backfill page, with up to 50 transactions per page. The head checkpoint advances only after the previous checkpoint is reached. Only checksum-validated classic `r...` account addresses are accepted; X-addresses are not.
+
+The adapter stores only successful, validated, direct XRP Payment events for the tracked transaction `Account` or `Destination`. The amount comes from metadata `delivered_amount`, so partial payments do not use the requested `Amount`; fee-only changes, XRP reserve changes, failed/unvalidated transactions, path payments, issued-currency payments, and non-Payment transaction types are skipped. This deliberately limited v1 does not claim full wallet activity coverage or decode IOU trust-line balance changes.
+
+`account_tx` only returns history retained by the selected server. The public endpoint may rate-limit or be unavailable and is not intended for sustained production traffic; configure an operated or contracted archival endpoint for regular monitoring. The catalog availability flag indicates a configured route, not complete ledger retention. See the [official account_tx reference](https://xrpl.org/docs/references/http-websocket-apis/public-api-methods/account-methods/account_tx) and [ledger history guide](https://xrpl.org/docs/concepts/networks-and-servers/ledger-history).
+
 ```bash
 docker compose up --build
 ```
 
-Run it outside Compose with the same `DATABASE_URL`, `REDIS_URL`, `BITCOIN_ESPLORA_URL`, and Blockscout variables:
+Run it outside Compose with the same `DATABASE_URL`, `REDIS_URL`, `BITCOIN_ESPLORA_URL`, `XRPL_RPC_URL`, and Blockscout variables:
 
 ```bash
 cargo run --manifest-path apps/api/Cargo.toml --bin sync_worker
