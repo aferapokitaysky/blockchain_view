@@ -1,0 +1,11 @@
+# Sui history and coverage
+
+The Sui adapter queries the official mainnet GraphQL endpoint (`https://graphql.mainnet.sui.io/graphql`) by affected address. Set `SUI_GRAPHQL_URL` to use another HTTPS GraphQL provider and `SUI_GRAPHQL_API_KEY` when that provider requires a bearer token. Both the API and sync worker read these variables from the backend environment. The shared Redis request gate spaces requests by at least 400 ms. Each sync is limited to three pages of 50 transactions, and each response is capped at 4 MiB.
+
+Initial sync starts from the newest indexed transactions. A separate historical cursor backfills older pages while the head cursor continues to discover new transactions. The cursor model avoids losing new activity while older history is being paged. Provider indexing and retention still bound coverage; public hosted history is commonly limited to roughly 30–90 days and should not be treated as an archive. Use an archival/indexing provider for longer coverage.
+
+Sui `balanceChangesJson` reports net coin balance changes by owner for a transaction. The adapter records only the tracked address's net change, with sender and recipient left unset. It may add an undirected `same_transaction` relation only when every reported change parses and exactly two owners have equal-and-opposite non-zero changes for the same coin type. This is evidence that two owners had matching net changes in one transaction; it does not establish a direct payment, ownership of intermediate objects, or continuation of the same funds. These relations are excluded from directed path finding and rapid-turnover scoring. Failed transactions are skipped. Amounts remain in raw units because coin decimals are not inferred.
+
+Aptos and Sui share Move-style hexadecimal account formats. The address form asks the user to choose between them when the format is ambiguous. A 20-byte hexadecimal form can also be an EVM address, so all three choices are offered. An address format does not prove that an account has activity.
+
+See [Sui GraphQL API](https://docs.sui.io/develop/accessing-data/graphql/graphql-rpc), [query with GraphQL](https://docs.sui.io/develop/accessing-data/graphql/query-with-graphql), and [Sui API reference](https://docs.sui.io/references/sui-api).

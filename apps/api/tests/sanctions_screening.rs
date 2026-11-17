@@ -103,6 +103,13 @@ fn test_state(database: PgPool) -> ApiState {
             reqwest::Client::new(),
         )
         .expect("тестовая конфигурация Aptos должна разбираться"),
+        sui: tracefold_api::sui_sync::SuiClient::new(
+            "https://127.0.0.1/graphql",
+            None,
+            reqwest::Client::new(),
+            None,
+        )
+        .expect("тестовая конфигурация Sui должна разбираться"),
     }
 }
 

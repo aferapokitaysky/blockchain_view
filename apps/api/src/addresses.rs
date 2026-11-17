@@ -145,6 +145,11 @@ fn normalize_catalogued_address(
             normalize_aptos_address(value)
         }
         crate::networks::NetworkFamily::Aptos => Err(ApiError::UnsupportedNetwork),
+        crate::networks::NetworkFamily::Sui if network.id == "sui" => {
+            crate::sui_sync::normalize_sui_address(value)
+                .ok_or(ApiError::Validation("Неверный формат адреса Sui"))
+        }
+        crate::networks::NetworkFamily::Sui => Err(ApiError::UnsupportedNetwork),
     }
 }
 

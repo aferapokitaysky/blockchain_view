@@ -145,6 +145,9 @@ pub(crate) async fn sync_tracked_address(
     if address.network == "aptos" {
         return crate::aptos_sync::sync_tracked_address(state, address_id, &address.address).await;
     }
+    if address.network == "sui" {
+        return crate::sui_sync::sync_tracked_address(state, address_id, &address.address).await;
+    }
 
     if address.network != "bitcoin" {
         let result = crate::evm_sync::sync_evm_address(

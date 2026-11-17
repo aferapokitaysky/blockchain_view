@@ -60,6 +60,7 @@ const NETWORK_NAMES: Record<string, TransactionFeedItem["network"]> = {
   bitcoin: "Bitcoin",
   cardano: "Cardano",
   aptos: "Aptos",
+  sui: "Sui",
   base: "Base",
   arbitrum: "Arbitrum",
   solana: "Solana",
@@ -117,6 +118,11 @@ function getFlow(transfer: ObservedTransfer, trackedWallet: string) {
       return { from: trackedWallet, to: "Cardano transaction participants" };
     }
     return { from: "Cardano UTxO observation", to: "Tracked wallet activity" };
+  }
+  if (transfer.network === "sui") {
+    return transfer.direction === "inbound"
+      ? { from: "Sui transaction balance change", to: trackedWallet }
+      : { from: trackedWallet, to: "Sui transaction balance change" };
   }
 
   return {

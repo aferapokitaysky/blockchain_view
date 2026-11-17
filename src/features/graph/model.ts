@@ -217,7 +217,12 @@ export function buildWalletFlowGraph(
   const relationships = new Map<string, ObservedRelationship>();
   for (const history of histories) {
     for (const relationship of history.relationships ?? []) {
-      if (relationship.relationship_type !== "same_transaction") continue;
+      if (
+        relationship.relationship_type !== "same_transaction" ||
+        relationship.network !== history.address.network
+      ) {
+        continue;
+      }
       const tracked = addressKey(
         history.address.network,
         history.address.address,
@@ -260,7 +265,10 @@ export function buildWalletFlowGraph(
     edgeRows.set(id, {
       from,
       to,
-      asset: "Cardano transaction",
+      asset:
+        relationship.network === "cardano"
+          ? "Cardano transaction"
+          : "Sui transaction",
       amount: 0n,
       decimals: 0,
       transfers: 0,

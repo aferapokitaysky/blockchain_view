@@ -91,7 +91,7 @@ export function WalletFlowGraph({
           <h2 id="flow-graph-title">Wallet connections</h2>
           <p>
             Observed transfers and same-transaction participant relations.
-            Cardano relations do not imply a direct payment path.
+            Participant relations do not imply a direct payment path.
           </p>
         </div>
         <div className="flow-graph-counts" aria-live="polite">
@@ -253,7 +253,7 @@ export function WalletFlowGraph({
                       <title>
                         {edge.kind === "transfer"
                           ? `${shortAddress(from.address)} to ${shortAddress(to.address)}: ${edge.amount} ${edge.asset}, ${edge.transfers} event${edge.transfers === 1 ? "" : "s"}`
-                          : `${shortAddress(from.address)} and ${shortAddress(to.address)} appeared in the same Cardano transaction; flow attribution is unknown.`}
+                          : `${shortAddress(from.address)} and ${shortAddress(to.address)} appeared in the same ${networkNames[from.network] ?? from.network} transaction; flow attribution is unknown.`}
                       </title>
                       <path
                         className={`flow-edge-line ${edge.kind === "same_transaction" ? "is-relationship" : ""} ${isPathEdge ? "is-path" : pathAnalysis && edge.kind === "transfer" ? "is-dimmed" : ""}`}
@@ -342,7 +342,7 @@ export function WalletFlowGraph({
                     <li key={edge.id}>
                       <span>
                         {edge.kind === "same_transaction"
-                          ? "Appeared in the same Cardano transaction as"
+                          ? "Appeared in the same transaction as"
                           : edge.from === focusedNode.id
                             ? "Sent to"
                             : "Received from"}{" "}

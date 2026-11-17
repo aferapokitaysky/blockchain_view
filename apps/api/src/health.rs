@@ -11,6 +11,7 @@ use crate::aptos_sync::AptosClient;
 use crate::cardano_sync::CardanoClient;
 use crate::etherscan_sync::EtherscanClient;
 use crate::evm_sync::BlockscoutClient;
+use crate::sui_sync::SuiClient;
 use crate::ton_sync::TonCenterClient;
 use crate::tron_sync::TronGridClient;
 
@@ -28,6 +29,7 @@ pub struct HealthState {
     pub ton_center: TonCenterClient,
     pub cardano: CardanoClient,
     pub aptos: AptosClient,
+    pub sui: SuiClient,
 }
 
 #[cfg(test)]
@@ -54,6 +56,13 @@ pub(crate) fn unavailable_state() -> HealthState {
             .expect("тестовая конфигурация Cardano должна разбираться"),
         aptos: AptosClient::new("https://127.0.0.1/graphql", None, reqwest::Client::new())
             .expect("тестовая конфигурация Aptos должна разбираться"),
+        sui: SuiClient::new(
+            "https://127.0.0.1/graphql",
+            None,
+            reqwest::Client::new(),
+            None,
+        )
+        .expect("тестовая конфигурация Sui должна разбираться"),
     }
 }
 

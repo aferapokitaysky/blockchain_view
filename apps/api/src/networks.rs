@@ -19,6 +19,7 @@ pub enum NetworkFamily {
     Xrpl,
     Ton,
     Aptos,
+    Sui,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -275,6 +276,20 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             api_base_url: None,
             sync_provider: None,
         },
+        NetworkInfo {
+            id: "sui".into(),
+            name: "Sui".into(),
+            family: NetworkFamily::Sui,
+            chain_id: None,
+            native_asset: "SUI".into(),
+            explorer_url: Some("https://suiscan.xyz/mainnet/".into()),
+            history_sync_available: true,
+            requires_api_key: false,
+            requires_paid_tier: false,
+            history_coverage: Some(vec!["sui-balance-change"]),
+            api_base_url: None,
+            sync_provider: None,
+        },
     ];
     networks.sort_by_key(|network| network.name.to_lowercase());
     networks
@@ -363,6 +378,9 @@ pub(crate) async fn list(
     if let Some(cardano) = networks.iter_mut().find(|network| network.id == "cardano") {
         cardano.history_sync_available = state.cardano.is_configured();
     }
+    if let Some(sui) = networks.iter_mut().find(|network| network.id == "sui") {
+        sui.history_sync_available = state.sui.is_configured();
+    }
     let history_sync_available = networks
         .iter()
         .any(|network| network.history_sync_available);
@@ -432,7 +450,7 @@ mod tests {
         }"#;
 
         let networks = parse_blockscout_config(config, false).unwrap();
-        assert_eq!(networks.len(), 11);
+        assert_eq!(networks.len(), 12);
         let ethereum = networks
             .iter()
             .find(|network| network.chain_id == Some(1))
@@ -455,6 +473,10 @@ mod tests {
             .unwrap();
         assert_eq!(cardano.family, NetworkFamily::Utxo);
         assert_eq!(cardano.history_coverage, Some(vec!["cardano-utxo"]));
+        let sui = networks.iter().find(|network| network.id == "sui").unwrap();
+        assert_eq!(sui.family, NetworkFamily::Sui);
+        assert_eq!(sui.native_asset, "SUI");
+        assert_eq!(sui.history_coverage, Some(vec!["sui-balance-change"]));
     }
 
     #[test]

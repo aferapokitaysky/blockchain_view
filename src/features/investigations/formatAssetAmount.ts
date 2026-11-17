@@ -35,6 +35,12 @@ export function formatObservedAmount(
     return `${BigInt(rawAmount).toLocaleString()} raw units`;
   }
   if (
+    transfer.transfer_kind === "sui_balance_change" &&
+    (transfer.token_decimals === null || transfer.token_decimals === undefined)
+  ) {
+    return `${BigInt(rawAmount).toLocaleString()} raw units`;
+  }
+  if (
     (transfer.transfer_kind === "erc20" ||
       transfer.transfer_kind === "solana_spl" ||
       transfer.transfer_kind === "trc20") &&
