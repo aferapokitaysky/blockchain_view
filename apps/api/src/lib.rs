@@ -15,6 +15,7 @@ pub mod investigations;
 pub mod networks;
 pub mod risk_signals;
 pub mod sanctions;
+pub mod solana_sync;
 pub mod sync_worker;
 pub mod transfers;
 

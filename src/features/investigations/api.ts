@@ -48,7 +48,13 @@ export type ObservedTransfer = {
   provider: string;
   observed_at: string;
   event_index?: number;
-  transfer_kind?: "bitcoin" | "evm_native" | "evm_internal" | "erc20";
+  transfer_kind?:
+    | "bitcoin"
+    | "evm_native"
+    | "evm_internal"
+    | "erc20"
+    | "solana_native"
+    | "solana_spl";
   token_decimals?: number | null;
   token_contract_address?: string | null;
   from_address?: string | null;

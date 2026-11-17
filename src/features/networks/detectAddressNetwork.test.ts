@@ -49,9 +49,24 @@ describe("detectAddressNetwork", () => {
     });
   });
 
-  it("does not treat generic base58 text as a supported chain", async () => {
+  it("asks users to confirm Solana-compatible public-key formats", async () => {
     await expect(
       detectAddressNetwork("So11111111111111111111111111111111111111112"),
-    ).resolves.toMatchObject({ status: "unsupported" });
+    ).resolves.toMatchObject({
+      status: "ambiguous",
+      family: "Solana-compatible",
+      message: expect.stringContaining(
+        "format alone does not prove the network",
+      ),
+    });
+
+    await expect(
+      detectAddressNetwork("not-a-public-key"),
+    ).resolves.toMatchObject({
+      status: "unsupported",
+    });
+    await expect(detectAddressNetwork("0".repeat(32))).resolves.toMatchObject({
+      status: "unsupported",
+    });
   });
 });

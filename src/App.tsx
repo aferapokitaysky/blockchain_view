@@ -213,6 +213,8 @@ const networkMeta: Record<string, { color: string }> = {
   Arbitrum: { color: "#64c8fa" },
   "Arbitrum One": { color: "#64c8fa" },
   arbitrum: { color: "#64c8fa" },
+  Solana: { color: "#a98cff" },
+  solana: { color: "#a98cff" },
 };
 
 function networkColor(network: string): string {
@@ -255,6 +257,25 @@ function NetworkShape({ network }: { network: Network }) {
         <>
           <path d="m12 2.5 8 4.6v9.8l-8 4.6-8-4.6V7.1l8-4.6Z" />
           <path d="m8 8 4 8m4-8-4 8m-1.8-2.4h3.6" />
+        </>
+      )}
+      {normalizedNetwork === "solana" && (
+        <>
+          <path
+            d="M6 5.5h12.5l-2.5 2.4H3.5L6 5.5Z"
+            fill="currentColor"
+            stroke="none"
+          />
+          <path
+            d="M6 10.8h14.5L18 13.2H3.5l2.5-2.4Z"
+            fill="currentColor"
+            stroke="none"
+          />
+          <path
+            d="M6 16.1h12.5L16 18.5H3.5l2.5-2.4Z"
+            fill="currentColor"
+            stroke="none"
+          />
         </>
       )}
       {!networkMeta[network] && (
@@ -549,6 +570,12 @@ function App() {
         .sort((left, right) => left.name.localeCompare(right.name)),
     [networkCatalog.networks],
   );
+  const addressDetectionNetworks = useMemo(() => {
+    if (addressDetection.status !== "ambiguous") return [];
+    return addressDetection.family === "EVM"
+      ? evmNetworks
+      : networkCatalog.networks.filter(({ family }) => family === "solana");
+  }, [addressDetection, evmNetworks, networkCatalog.networks]);
   const networkFilterOptions = useMemo(() => {
     const networkIds = new Set([
       ...LEGACY_NETWORKS.map(({ id }) => id),
@@ -839,7 +866,7 @@ function App() {
     if (!network) {
       setFormError(
         addressDetection.status === "ambiguous"
-          ? "Select the EVM network before tracking this wallet"
+          ? "Select the network before tracking this wallet"
           : "Enter a valid address on a supported network",
       );
       return;
@@ -1857,6 +1884,15 @@ function App() {
                 Reload saved history
               </button>
             </div>
+            {trackedAddresses.some(({ network }) => network === "solana") && (
+              <p className="network-catalog-state" role="note">
+                Solana history is partial: finalized SOL transfers and parsed
+                SPL transfers from transactions that reference this wallet.
+                Incoming SPL activity can be missed when the wallet appears only
+                as token-balance owner metadata. Token-account discovery,
+                unsupported programs, and public RPC retention also leave gaps.
+              </p>
+            )}
             <div className="table-wrap">
               <table>
                 <thead>
@@ -2215,14 +2251,19 @@ function App() {
                 </span>
                 {addressDetection.status === "detected" && (
                   <span className="network-detected">
-                    <NetworkMark network="bitcoin" /> Bitcoin mainnet
+                    <NetworkMark network={addressDetection.network} />
+                    {addressDetection.network === "bitcoin"
+                      ? "Bitcoin mainnet"
+                      : (networkCatalog.networks.find(
+                          ({ id }) => id === addressDetection.network,
+                        )?.name ?? addressDetection.network)}
                   </span>
                 )}
                 {addressDetection.status === "ambiguous" && (
                   <select
                     id="wallet-network"
                     className="network-detected"
-                    aria-label="Select EVM network"
+                    aria-label="Select network"
                     value={networkChoice}
                     onChange={(event) => {
                       setNetworkChoice(event.target.value);
@@ -2232,10 +2273,10 @@ function App() {
                     disabled={isSubmitting}
                   >
                     <option value="">Select network</option>
-                    {evmNetworks.map((network) => (
+                    {addressDetectionNetworks.map((network) => (
                       <option key={network.id} value={network.id}>
-                        {network.name} · {network.native_asset} · chain{" "}
-                        {network.chain_id}
+                        {network.name} · {network.native_asset}
+                        {network.chain_id ? ` · chain ${network.chain_id}` : ""}
                       </option>
                     ))}
                   </select>
@@ -2270,9 +2311,9 @@ function App() {
               )}
               {addressDetection.status === "ambiguous" &&
                 !networkCatalogLoading &&
-                evmNetworks.length === 0 && (
+                addressDetectionNetworks.length === 0 && (
                   <p className="network-catalog-state" role="status">
-                    No EVM networks are available in the catalog.
+                    No matching networks are available in the catalog.
                   </p>
                 )}
               {networkChoice &&

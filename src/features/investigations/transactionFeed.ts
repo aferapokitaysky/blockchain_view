@@ -60,6 +60,7 @@ const NETWORK_NAMES: Record<string, TransactionFeedItem["network"]> = {
   bitcoin: "Bitcoin",
   base: "Base",
   arbitrum: "Arbitrum",
+  solana: "Solana",
 };
 
 function shortAddress(address: string): string {
@@ -80,6 +81,16 @@ function getAmount(transfer: ObservedTransfer): string {
     return `−${formatAmount(transfer, transfer.spent_amount)}`;
   }
   return `+${formatAmount(transfer, transfer.received_amount)} in · −${formatAmount(transfer, transfer.spent_amount)} out`;
+}
+
+function getAssetLabel(transfer: ObservedTransfer): string {
+  if (
+    transfer.transfer_kind === "solana_spl" &&
+    transfer.token_contract_address
+  ) {
+    return `SPL ${shortAddress(transfer.token_contract_address)}`;
+  }
+  return transfer.asset;
 }
 
 function getFlow(transfer: ObservedTransfer, trackedWallet: string) {
@@ -153,7 +164,7 @@ export function buildTransactionFeed(
             from: flow.from,
             to: flow.to,
             amount: getAmount(transfer),
-            asset: transfer.asset,
+            asset: getAssetLabel(transfer),
             occurredAt: transfer.block_time ?? transfer.observed_at,
             confirmed: transfer.confirmed,
             provider: transfer.provider,

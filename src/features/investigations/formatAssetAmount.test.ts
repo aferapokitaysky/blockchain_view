@@ -20,5 +20,16 @@ describe("formatAssetAmount", () => {
         "123456789",
       ),
     ).toBe("123,456,789 raw units");
+
+    expect(
+      formatObservedAmount(
+        {
+          network: "solana",
+          transfer_kind: "solana_spl",
+          token_decimals: null,
+        },
+        "123456789",
+      ),
+    ).toBe("123,456,789 raw units");
   });
 });

@@ -23,6 +23,40 @@ describe("network catalog helpers", () => {
     expect(hasAddressScreeningMapping("eip155:10")).toBe(false);
   });
 
+  it("accepts Solana only with its dedicated family and no EVM chain id", () => {
+    const catalog = parseNetworkCatalog({
+      history_sync_available: true,
+      networks: [
+        {
+          id: "solana",
+          name: "Solana",
+          family: "solana",
+          chain_id: null,
+          native_asset: "SOL",
+          explorer_url: "https://explorer.solana.com/",
+          history_sync_available: true,
+        },
+      ],
+    });
+
+    expect(catalog.networks).toMatchObject([
+      { id: "solana", family: "solana", chain_id: null },
+    ]);
+    expect(() =>
+      parseNetworkCatalog({
+        history_sync_available: true,
+        networks: [
+          {
+            ...LEGACY_NETWORKS[0],
+            id: "solana",
+            family: "evm",
+            chain_id: 1,
+          },
+        ],
+      }),
+    ).toThrow("contains no supported networks");
+  });
+
   it("resolves catalog labels and preserves an unknown id as a visible fallback", () => {
     const networks = [
       ...LEGACY_NETWORKS,

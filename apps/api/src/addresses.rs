@@ -122,7 +122,22 @@ fn normalize_catalogued_address(
             Network::Bitcoin.normalize(value)
         }
         crate::networks::NetworkFamily::Utxo => Err(ApiError::UnsupportedNetwork),
+        crate::networks::NetworkFamily::Solana if network.id == "solana" => {
+            normalize_solana_address(value)
+        }
+        crate::networks::NetworkFamily::Solana => Err(ApiError::UnsupportedNetwork),
     }
+}
+
+pub(crate) fn normalize_solana_address(value: &str) -> Result<String, ApiError> {
+    let address = value.trim();
+    let decoded = bs58::decode(address)
+        .into_vec()
+        .map_err(|_| ApiError::Validation("Неверный формат адреса Solana"))?;
+    if decoded.len() != 32 || bs58::encode(&decoded).into_string() != address {
+        return Err(ApiError::Validation("Неверный формат адреса Solana"));
+    }
+    Ok(address.to_owned())
 }
 
 pub(crate) fn normalize_evm_address(value: &str) -> Result<String, ApiError> {
@@ -148,7 +163,7 @@ async fn ensure_investigation(state: &ApiState, id: Uuid) -> Result<(), ApiError
 
 #[cfg(test)]
 mod tests {
-    use super::{Network, normalize_catalogued_address};
+    use super::{Network, normalize_catalogued_address, normalize_solana_address};
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
 
@@ -185,6 +200,14 @@ mod tests {
             address.to_lowercase()
         );
         assert!(Network::Arbitrum.normalize("0x1234").is_err());
+    }
+
+    #[test]
+    fn validates_solana_public_keys_as_canonical_base58_32_byte_values() {
+        let address = "So11111111111111111111111111111111111111112";
+        assert_eq!(normalize_solana_address(address).unwrap(), address);
+        assert!(normalize_solana_address("So1111111111111111111111111111111111111111").is_err());
+        assert!(normalize_solana_address("0OIl").is_err());
     }
 
     #[test]
