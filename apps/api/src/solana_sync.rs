@@ -646,7 +646,9 @@ mod tests {
         let transaction: SolanaTransaction = serde_json::from_value(json!({
             "slot": 124,
             "blockTime": null,
-            "transaction": { "message": { "instructions": [] } },
+            "transaction": { "message": { "instructions": [
+                { "program": "memo", "parsed": { "type": "memo", "info": "ignored" } }
+            ] } },
             "meta": { "err": null, "innerInstructions": [{ "index": 0, "instructions": [
                 { "program": "system", "parsed": { "type": "transfer", "info": {
                     "source": "11111111111111111111111111111111", "destination": TRACKED, "lamports": 500000000
