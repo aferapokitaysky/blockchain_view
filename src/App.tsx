@@ -1174,7 +1174,12 @@ function App() {
             ) : trackedAddresses.length === 0 ? (
               <div className="flow-graph-empty">
                 <span className="flow-graph-empty-mark" aria-hidden="true">
-                  <NetworkMark network="ethereum" />
+                  <svg viewBox="0 0 40 40">
+                    <circle cx="10" cy="20" r="4" />
+                    <circle cx="30" cy="10" r="4" />
+                    <circle cx="30" cy="30" r="4" />
+                    <path d="M14 18 26 12M14 22l12 6" />
+                  </svg>
                 </span>
                 <div>
                   <strong>No addresses in this investigation</strong>
