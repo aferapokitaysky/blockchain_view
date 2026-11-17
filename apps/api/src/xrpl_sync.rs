@@ -392,31 +392,29 @@ fn parse_transaction(row: &Value, tracked: &str) -> Vec<Transfer> {
 
 fn account_root_delta(meta: &Value, tracked: &str) -> Option<(i128, bool)> {
     for affected in meta["AffectedNodes"].as_array()? {
-        if let Some(node) = affected.get("ModifiedNode") {
-            if node["LedgerEntryType"] == "AccountRoot"
-                && node["FinalFields"]["Account"].as_str() == Some(tracked)
-            {
-                let before = node["PreviousFields"]["Balance"]
-                    .as_str()?
-                    .parse::<i128>()
-                    .ok()?;
-                let after = node["FinalFields"]["Balance"]
-                    .as_str()?
-                    .parse::<i128>()
-                    .ok()?;
-                return Some((after.checked_sub(before)?, false));
-            }
+        if let Some(node) = affected.get("ModifiedNode")
+            && node["LedgerEntryType"] == "AccountRoot"
+            && node["FinalFields"]["Account"].as_str() == Some(tracked)
+        {
+            let before = node["PreviousFields"]["Balance"]
+                .as_str()?
+                .parse::<i128>()
+                .ok()?;
+            let after = node["FinalFields"]["Balance"]
+                .as_str()?
+                .parse::<i128>()
+                .ok()?;
+            return Some((after.checked_sub(before)?, false));
         }
-        if let Some(node) = affected.get("CreatedNode") {
-            if node["LedgerEntryType"] == "AccountRoot"
-                && node["NewFields"]["Account"].as_str() == Some(tracked)
-            {
-                let balance = node["NewFields"]["Balance"]
-                    .as_str()?
-                    .parse::<i128>()
-                    .ok()?;
-                return Some((balance, true));
-            }
+        if let Some(node) = affected.get("CreatedNode")
+            && node["LedgerEntryType"] == "AccountRoot"
+            && node["NewFields"]["Account"].as_str() == Some(tracked)
+        {
+            let balance = node["NewFields"]["Balance"]
+                .as_str()?
+                .parse::<i128>()
+                .ok()?;
+            return Some((balance, true));
         }
     }
     None
