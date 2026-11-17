@@ -7,6 +7,7 @@ import {
   scoreTransfer,
 } from "../risk/scoreTransfer";
 import type { TransferRiskAssessment } from "../risk/scoreTransfer";
+import { deriveBehaviorSignals } from "../risk/behaviorSignals";
 
 export type TransactionFeedItem = {
   id: string;
@@ -162,19 +163,23 @@ export function buildTransactionFeed(
     .flatMap(({ address, transfers }) => {
       const trackedWallet =
         address.label?.trim() || shortAddress(address.address);
+      const isRiskTrackedAddress = address.id === riskContext?.trackedAddressId;
+      const behaviorSignals = isRiskTrackedAddress
+        ? deriveBehaviorSignals(transfers)
+        : [];
       return transfers.flatMap((transfer) => {
         const network = getNetworkName(transfer.network, namesById);
         if (!network) return [];
 
         const flow = getFlow(transfer, trackedWallet);
-        const riskEvidence =
-          address.id === riskContext?.trackedAddressId
-            ? collectTransferRiskEvidence(
-                transfer,
-                riskContext.signals,
-                riskContext.screening,
-              )
-            : [];
+        const riskEvidence = isRiskTrackedAddress
+          ? collectTransferRiskEvidence(
+              transfer,
+              riskContext?.signals ?? [],
+              riskContext?.screening ?? null,
+              behaviorSignals,
+            )
+          : [];
         return [
           {
             id: `${transfer.id}:${transfer.event_index ?? "transaction"}`,
