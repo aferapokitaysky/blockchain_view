@@ -62,7 +62,7 @@ pub(crate) async fn sync_tracked_address(
         for row in rows {
             let row_hash = transaction_hash(&row);
             if observed_head.is_none() {
-                observed_head = row_hash.map(str::to_owned);
+                observed_head = row_hash.clone();
             }
             if is_head_checkpoint(&row, head_hash.as_deref()) {
                 reached_head = true;
@@ -79,6 +79,11 @@ pub(crate) async fn sync_tracked_address(
         }
     }
 
+    if head_hash.is_some() && !head_boundary_reached(reached_head, marker.is_some()) {
+        // История провайдера закончилась до старого checkpoint: фиксируем доступную границу.
+        reached_head = true;
+    }
+
     if head_hash.is_some() && !reached_head {
         if let Some(pending) = head_pending_marker.take() {
             let (rows, next) = fetch_page(state, address, Some(&pending)).await?;
@@ -91,9 +96,15 @@ pub(crate) async fn sync_tracked_address(
                 }
                 transfers.extend(parse_transaction(&row, address));
             }
+            if !head_boundary_reached(reached_head, next.is_some()) {
+                reached_head = true;
+            }
             head_pending_marker = if reached_head { None } else { next };
         } else {
             head_pending_marker = marker.clone();
+            if !head_boundary_reached(reached_head, head_pending_marker.is_some()) {
+                reached_head = true;
+            }
         }
     }
 
@@ -126,7 +137,7 @@ pub(crate) async fn sync_tracked_address(
              (tracked_address_id, network, transaction_hash, event_index, transfer_kind, direction, \
               received_amount, spent_amount, asset, token_contract_address, token_decimals, \
               from_address, to_address, block_height, block_time, confirmed, provider, source_host, observed_at) \
-             VALUES ($1, 'xrpl', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, TRUE, $15, $16, $17) \
+             VALUES ($1, 'xrpl', $2, $3, $4, $5, $6::NUMERIC, $7::NUMERIC, $8, $9, $10, $11, $12, $13, $14, TRUE, $15, $16, $17) \
              ON CONFLICT (tracked_address_id, transaction_hash, transfer_kind, event_index) DO UPDATE SET \
               direction = EXCLUDED.direction, received_amount = EXCLUDED.received_amount, spent_amount = EXCLUDED.spent_amount, \
               asset = EXCLUDED.asset, token_contract_address = EXCLUDED.token_contract_address, \
@@ -160,14 +171,22 @@ pub(crate) async fn sync_tracked_address(
     })
 }
 
-fn transaction_hash(row: &Value) -> Option<&str> {
-    row.get("tx_json").or_else(|| row.get("tx"))?["hash"]
+fn transaction_hash(row: &Value) -> Option<String> {
+    let hash = row.get("tx_json").or_else(|| row.get("tx"))?["hash"]
         .as_str()
-        .or(row["hash"].as_str())
+        .or(row["hash"].as_str())?;
+    if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(hash.to_ascii_lowercase())
 }
 
 fn is_head_checkpoint(row: &Value, checkpoint: Option<&str>) -> bool {
-    checkpoint.is_some_and(|checkpoint| transaction_hash(row) == Some(checkpoint))
+    let Some(checkpoint) = checkpoint else {
+        return false;
+    };
+    let checkpoint = checkpoint.to_ascii_lowercase();
+    transaction_hash(row).as_deref() == Some(checkpoint.as_str())
 }
 
 fn next_head_hash(
@@ -180,6 +199,10 @@ fn next_head_hash(
     } else {
         previous
     }
+}
+
+fn head_boundary_reached(checkpoint_found: bool, has_more_pages: bool) -> bool {
+    checkpoint_found || !has_more_pages
 }
 
 async fn fetch_page(
@@ -277,12 +300,11 @@ fn parse_transaction(row: &Value, tracked: &str) -> Vec<Transfer> {
         .get("tx_json")
         .or_else(|| row.get("tx"))
         .unwrap_or(&Value::Null);
-    let hash = tx["hash"]
-        .as_str()
-        .or(row["hash"].as_str())
-        .unwrap_or_default();
+    let Some(hash) = transaction_hash(row) else {
+        return vec![];
+    };
     let ledger = row["ledger_index"].as_i64().unwrap_or_default();
-    if hash.is_empty() || ledger <= 0 {
+    if ledger <= 0 {
         return vec![];
     }
     let time = row["close_time_iso"]
@@ -344,7 +366,7 @@ fn parse_transaction(row: &Value, tracked: &str) -> Vec<Transfer> {
         ("outbound", tx_account, tx_destination)
     };
     vec![Transfer {
-        hash: hash.to_owned(),
+        hash,
         event_index: 0,
         kind: "xrpl_native",
         direction,
@@ -409,14 +431,14 @@ fn provider_host(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_RESPONSE_BYTES, append_response_chunk, is_head_checkpoint, next_head_hash,
-        parse_transaction,
+        MAX_RESPONSE_BYTES, append_response_chunk, head_boundary_reached, is_head_checkpoint,
+        next_head_hash, parse_transaction, transaction_hash,
     };
     use serde_json::json;
 
     #[test]
     fn parses_successful_payment_without_counting_the_fee_as_xrp_transfer() {
-        let row = json!({"validated":true,"ledger_index":100,"close_time":800000000,"tx_json":{"hash":"ABC","TransactionType":"Payment","Account":"rSender","Destination":"rTracked","Fee":"12","Amount":"9999999"},"meta":{"TransactionResult":"tesSUCCESS","delivered_amount":"2500000","AffectedNodes":[{"ModifiedNode":{"LedgerEntryType":"AccountRoot","FinalFields":{"Account":"rTracked","Balance":"32500000"},"PreviousFields":{"Balance":"30000000"}}},{"ModifiedNode":{"LedgerEntryType":"AccountRoot","FinalFields":{"Account":"rSender","Balance":"47499988"},"PreviousFields":{"Balance":"50000000"}}}]}});
+        let row = json!({"validated":true,"ledger_index":100,"close_time":800000000,"tx_json":{"hash":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","TransactionType":"Payment","Account":"rSender","Destination":"rTracked","Fee":"12","Amount":"9999999"},"meta":{"TransactionResult":"tesSUCCESS","delivered_amount":"2500000","AffectedNodes":[{"ModifiedNode":{"LedgerEntryType":"AccountRoot","FinalFields":{"Account":"rTracked","Balance":"32500000"},"PreviousFields":{"Balance":"30000000"}}},{"ModifiedNode":{"LedgerEntryType":"AccountRoot","FinalFields":{"Account":"rSender","Balance":"47499988"},"PreviousFields":{"Balance":"50000000"}}}]}});
         let transfers = parse_transaction(&row, "rTracked");
         assert_eq!(transfers.len(), 1);
         assert_eq!(transfers[0].received, "2500000");
@@ -429,7 +451,7 @@ mod tests {
 
     #[test]
     fn ignores_failed_and_unvalidated_transactions() {
-        let mut row = json!({"validated":false,"ledger_index":100,"tx_json":{"hash":"ABC"},"meta":{"TransactionResult":"tesSUCCESS"}});
+        let mut row = json!({"validated":false,"ledger_index":100,"tx_json":{"hash":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"meta":{"TransactionResult":"tesSUCCESS"}});
         assert!(parse_transaction(&row, "rTracked").is_empty());
         row["validated"] = json!(true);
         assert!(parse_transaction(&row, "rTracked").is_empty());
@@ -437,13 +459,13 @@ mod tests {
 
     #[test]
     fn skips_issued_currency_payments_until_the_asset_model_is_explicit() {
-        let row = json!({"validated":true,"ledger_index":100,"tx_json":{"hash":"ABC","TransactionType":"Payment","Account":"rSender","Destination":"rTracked"},"meta":{"TransactionResult":"tesSUCCESS","delivered_amount":{"currency":"USD","issuer":"rIssuer","value":"1.25"}}});
+        let row = json!({"validated":true,"ledger_index":100,"tx_json":{"hash":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","TransactionType":"Payment","Account":"rSender","Destination":"rTracked"},"meta":{"TransactionResult":"tesSUCCESS","delivered_amount":{"currency":"USD","issuer":"rIssuer","value":"1.25"}}});
         assert!(parse_transaction(&row, "rTracked").is_empty());
     }
 
     #[test]
     fn skips_path_payments_and_non_payment_balance_changes() {
-        let mut row = json!({"validated":true,"ledger_index":100,"tx_json":{"hash":"ABC","TransactionType":"Payment","Account":"rSender","Destination":"rTracked","Paths":[[]]},"meta":{"TransactionResult":"tesSUCCESS","delivered_amount":"100"}});
+        let mut row = json!({"validated":true,"ledger_index":100,"tx_json":{"hash":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","TransactionType":"Payment","Account":"rSender","Destination":"rTracked","Paths":[[]]},"meta":{"TransactionResult":"tesSUCCESS","delivered_amount":"100"}});
         assert!(parse_transaction(&row, "rTracked").is_empty());
         row["tx_json"]["TransactionType"] = json!("OfferCreate");
         row["tx_json"].as_object_mut().unwrap().remove("Paths");
@@ -452,7 +474,7 @@ mod tests {
 
     #[test]
     fn uses_delivered_amount_for_new_account_without_counting_its_reserve() {
-        let row = json!({"validated":true,"ledger_index":100,"tx_json":{"hash":"ABC","TransactionType":"Payment","Account":"rSender","Destination":"rTracked","Fee":"12"},"meta":{"TransactionResult":"tesSUCCESS","delivered_amount":"2500000","AffectedNodes":[{"CreatedNode":{"LedgerEntryType":"AccountRoot","NewFields":{"Account":"rTracked","Balance":"2501000"}}},{"ModifiedNode":{"LedgerEntryType":"AccountRoot","FinalFields":{"Account":"rSender","Balance":"47499988"},"PreviousFields":{"Balance":"50000000"}}}]}});
+        let row = json!({"validated":true,"ledger_index":100,"tx_json":{"hash":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","TransactionType":"Payment","Account":"rSender","Destination":"rTracked","Fee":"12"},"meta":{"TransactionResult":"tesSUCCESS","delivered_amount":"2500000","AffectedNodes":[{"CreatedNode":{"LedgerEntryType":"AccountRoot","NewFields":{"Account":"rTracked","Balance":"2501000"}}},{"ModifiedNode":{"LedgerEntryType":"AccountRoot","FinalFields":{"Account":"rSender","Balance":"47499988"},"PreviousFields":{"Balance":"50000000"}}}]}});
         let transfers = parse_transaction(&row, "rTracked");
         assert_eq!(transfers.len(), 1);
         assert_eq!(transfers[0].received, "2500000");
@@ -460,16 +482,27 @@ mod tests {
 
     #[test]
     fn rejects_payment_when_account_root_delta_disagrees_with_delivery() {
-        let row = json!({"validated":true,"ledger_index":100,"tx_json":{"hash":"ABC","TransactionType":"Payment","Account":"rSender","Destination":"rTracked","Fee":"12"},"meta":{"TransactionResult":"tesSUCCESS","delivered_amount":"2500000","AffectedNodes":[{"ModifiedNode":{"LedgerEntryType":"AccountRoot","FinalFields":{"Account":"rTracked","Balance":"32499999"},"PreviousFields":{"Balance":"30000000"}}}]}});
+        let row = json!({"validated":true,"ledger_index":100,"tx_json":{"hash":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","TransactionType":"Payment","Account":"rSender","Destination":"rTracked","Fee":"12"},"meta":{"TransactionResult":"tesSUCCESS","delivered_amount":"2500000","AffectedNodes":[{"ModifiedNode":{"LedgerEntryType":"AccountRoot","FinalFields":{"Account":"rTracked","Balance":"32499999"},"PreviousFields":{"Balance":"30000000"}}}]}});
         assert!(parse_transaction(&row, "rTracked").is_empty());
     }
 
     #[test]
     fn new_head_transactions_are_processed_until_the_previous_checkpoint() {
-        let new = json!({"tx_json":{"hash":"NEW"}});
-        let checkpoint = json!({"tx_json":{"hash":"OLD"}});
-        assert!(!is_head_checkpoint(&new, Some("OLD")));
-        assert!(is_head_checkpoint(&checkpoint, Some("OLD")));
+        let new = json!({"tx_json":{"hash":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}});
+        let checkpoint = json!({"tx_json":{"hash":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"}});
+        assert!(!is_head_checkpoint(
+            &new,
+            Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        ));
+        assert!(is_head_checkpoint(
+            &checkpoint,
+            Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        ));
+        assert!(transaction_hash(&json!({"hash":"not-a-hash"})).is_none());
+        assert_eq!(
+            transaction_hash(&checkpoint),
+            Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into())
+        );
     }
 
     #[test]
@@ -481,6 +514,22 @@ mod tests {
         assert_eq!(
             next_head_hash(Some("OLD".into()), Some("NEW".into()), true),
             Some("NEW".into())
+        );
+    }
+
+    #[test]
+    fn stale_head_checkpoint_stops_when_provider_history_is_exhausted() {
+        let available_head = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let next_marker: Option<serde_json::Value> = None;
+        let reached_head = head_boundary_reached(false, next_marker.is_some());
+        assert!(reached_head);
+        assert_eq!(
+            next_head_hash(
+                Some("pruned-checkpoint".into()),
+                Some(available_head.into()),
+                reached_head
+            ),
+            Some(available_head.into())
         );
     }
 

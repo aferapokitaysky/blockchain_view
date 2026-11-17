@@ -1,6 +1,8 @@
 use axum::{
+    Json, Router,
     body::Body,
     http::{Method, Request, StatusCode},
+    routing::post,
 };
 use redis::Client as RedisClient;
 use serde::Deserialize;
@@ -85,7 +87,7 @@ async fn investigation_and_address_routes_round_trip_through_postgres(pool: PgPo
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn network_constraint_accepts_legacy_eip155_solana_and_tron_ids(pool: PgPool) {
+async fn network_constraint_accepts_legacy_eip155_solana_tron_and_xrpl_ids(pool: PgPool) {
     let investigation_id = sqlx::query_scalar::<_, Uuid>(
         "INSERT INTO investigations (name) VALUES ('Network constraint') RETURNING id",
     )
@@ -101,6 +103,7 @@ async fn network_constraint_accepts_legacy_eip155_solana_and_tron_ids(pool: PgPo
         "eip155:10",
         "solana",
         "tron",
+        "xrpl",
     ] {
         sqlx::query("INSERT INTO tracked_addresses (investigation_id, network, address) VALUES ($1, $2, 'address')")
             .bind(investigation_id)
@@ -109,6 +112,82 @@ async fn network_constraint_accepts_legacy_eip155_solana_and_tron_ids(pool: PgPo
             .await
             .unwrap_or_else(|error| panic!("network {network} should be accepted: {error}"));
     }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn xrpl_sync_persists_rpc_amount_strings_as_numeric(pool: PgPool) {
+    let investigation_id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO investigations (name) VALUES ('XRPL numeric persistence') RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("исследование должно создаться");
+    let address = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh";
+    let address_id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO tracked_addresses (investigation_id, network, address) VALUES ($1, 'xrpl', $2) RETURNING id",
+    )
+    .bind(investigation_id)
+    .bind(address)
+    .fetch_one(&pool)
+    .await
+    .expect("XRPL адрес должен сохраниться");
+
+    let row = serde_json::json!({
+        "validated": true,
+        "ledger_index": 100,
+        "close_time": 800000000,
+        "tx_json": {
+            "hash": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "TransactionType": "Payment",
+            "Account": "rSender",
+            "Destination": address,
+            "Fee": "12",
+            "Amount": "9999999"
+        },
+        "meta": {
+            "TransactionResult": "tesSUCCESS",
+            "delivered_amount": "2500000",
+            "AffectedNodes": [
+                {"ModifiedNode":{"LedgerEntryType":"AccountRoot","FinalFields":{"Account":address,"Balance":"32500000"},"PreviousFields":{"Balance":"30000000"}}},
+                {"ModifiedNode":{"LedgerEntryType":"AccountRoot","FinalFields":{"Account":"rSender","Balance":"47499988"},"PreviousFields":{"Balance":"50000000"}}}
+            ]
+        }
+    });
+    let provider = Router::new().route(
+        "/",
+        post(move || {
+            let row = row.clone();
+            async move { Json(serde_json::json!({"result":{"transactions":[row]}})) }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("локальный RPC должен запуститься");
+    let provider_url = format!("http://{}/", listener.local_addr().unwrap());
+    let provider_task = tokio::spawn(async move {
+        axum::serve(listener, provider)
+            .await
+            .expect("локальный RPC должен обслуживать запросы");
+    });
+
+    let mut state = test_state(pool.clone());
+    state.xrpl_rpc_url = provider_url;
+    let result = tracefold_api::xrpl_sync::sync_tracked_address(&state, address_id, address)
+        .await
+        .expect("XRPL синхронизация должна сохраниться");
+    assert_eq!(result.saved, 1);
+
+    let amounts = sqlx::query_as::<_, (String, String, String)>(
+        "SELECT received_amount::text, spent_amount::text, transaction_hash FROM observed_transfers WHERE tracked_address_id = $1",
+    )
+    .bind(address_id)
+    .fetch_one(&pool)
+    .await
+    .expect("сохранённый перевод должен читаться");
+    assert_eq!(amounts.0, "2500000");
+    assert_eq!(amounts.1, "0");
+    assert_eq!(amounts.2, "a".repeat(64));
+    provider_task.abort();
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -230,6 +309,7 @@ fn test_state(database: PgPool) -> ApiState {
         http_client: reqwest::Client::new(),
         bitcoin_esplora_url: "https://blockstream.info/api".into(),
         solana_rpc_url: "http://127.0.0.1:1".into(),
+        xrpl_rpc_url: "http://127.0.0.1:1".into(),
         blockscout: tracefold_api::evm_sync::BlockscoutClient::new(
             "http://127.0.0.1:1",
             None,

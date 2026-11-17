@@ -141,13 +141,23 @@ fn normalize_catalogued_address(
 
 pub(crate) fn normalize_xrpl_address(value: &str) -> Result<String, ApiError> {
     let address = value.trim();
+    if address.starts_with('X') {
+        return Err(ApiError::Validation(
+            "X-address не поддерживается; используйте classic-адрес XRP Ledger",
+        ));
+    }
     let payload = bs58::decode(address)
+        .with_alphabet(bs58::Alphabet::RIPPLE)
         .with_check(Some(0))
         .into_vec()
         .map_err(|_| ApiError::Validation("Неверный classic-адрес XRP Ledger"))?;
     if payload.len() != 21
         || payload[0] != 0
-        || bs58::encode(&payload).with_check().into_string() != address
+        || bs58::encode(&payload)
+            .with_alphabet(bs58::Alphabet::RIPPLE)
+            .with_check()
+            .into_string()
+            != address
     {
         return Err(ApiError::Validation("Неверный classic-адрес XRP Ledger"));
     }

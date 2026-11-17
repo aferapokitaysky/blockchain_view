@@ -201,7 +201,7 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             native_asset: "XRP".into(),
             explorer_url: Some("https://livenet.xrpl.org/".into()),
             history_sync_available: true,
-            history_coverage: None,
+            history_coverage: Some(vec!["xrp-direct-payment"]),
             api_base_url: None,
         },
     ];
