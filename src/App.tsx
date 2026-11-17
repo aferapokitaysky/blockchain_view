@@ -611,6 +611,9 @@ function App() {
             : family === "solana",
         );
   }, [addressDetection, evmNetworks, networkCatalog.networks]);
+  const selectedNetworkChoice = networkCatalog.networks.find(
+    ({ id }) => id === networkChoice,
+  );
   const networkFilterOptions = useMemo(() => {
     const networkIds = new Set([
       ...LEGACY_NETWORKS.map(({ id }) => id),
@@ -2382,6 +2385,12 @@ function App() {
                     id="wallet-network"
                     className="network-detected"
                     aria-label="Select network"
+                    aria-describedby={
+                      selectedNetworkChoice?.requires_api_key &&
+                      !selectedNetworkChoice.history_sync_available
+                        ? "network-sync-note"
+                        : undefined
+                    }
                     value={networkChoice}
                     onChange={(event) => {
                       setNetworkChoice(event.target.value);
@@ -2395,15 +2404,22 @@ function App() {
                       <option key={network.id} value={network.id}>
                         {network.name} · {network.native_asset}
                         {network.chain_id ? ` · chain ${network.chain_id}` : ""}
-                        {network.requires_api_key &&
-                          !network.history_sync_available &&
-                          (network.requires_paid_tier
-                            ? " · paid Etherscan plan required"
-                            : " · Etherscan API key required")}
                       </option>
                     ))}
                   </select>
                 )}
+                {selectedNetworkChoice?.requires_api_key &&
+                  !selectedNetworkChoice.history_sync_available && (
+                    <small
+                      id="network-sync-note"
+                      className="network-catalog-state"
+                      role="status"
+                    >
+                      {selectedNetworkChoice.requires_paid_tier
+                        ? "History sync requires an Etherscan API key on an eligible paid plan."
+                        : "History sync requires an Etherscan API key on the backend."}
+                    </small>
+                  )}
               </div>
               {networkCatalogLoading && (
                 <p className="network-catalog-state" role="status">
