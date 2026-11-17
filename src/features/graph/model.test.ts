@@ -45,6 +45,39 @@ function transfer(overrides: Record<string, unknown> = {}) {
 }
 
 describe("wallet flow graph", () => {
+  it("creates Aptos graph edges from attributed fungible asset activities", () => {
+    const address = `0x${"1".repeat(64)}`;
+    const history = {
+      address: { ...trackedAddress, network: "aptos", address },
+      transfers: [
+        transfer({
+          network: "aptos",
+          transaction_hash: "123456",
+          transfer_kind: "aptos_fungible",
+          direction: "outbound",
+          received_amount: "0",
+          spent_amount: "123456789",
+          asset: "0x1::aptos_coin::AptosCoin",
+          token_decimals: null,
+          token_contract_address: "0x1::aptos_coin::AptosCoin",
+          from_address: address,
+          to_address: `0x${"2".repeat(64)}`,
+        }),
+      ],
+    } as unknown as WalletHistory;
+
+    const graph = buildWalletFlowGraph([history]);
+    expect(graph.nodes).toHaveLength(2);
+    expect(graph.edges).toMatchObject([
+      {
+        from: `aptos:${address}`,
+        to: `aptos:0x${"2".repeat(64)}`,
+        asset: "0x1::aptos_coin::AptosCoin",
+        amount: "123456789",
+      },
+    ]);
+  });
+
   it("allows snapshots when either evidence source exists", () => {
     expect(
       hasGraphEvidence({

@@ -87,7 +87,8 @@ function eventKey(transfer: ObservedTransfer): string {
     isEvmNetworkId(network) ||
     network === "tron" ||
     network === "xrpl" ||
-    network === "ton"
+    network === "ton" ||
+    network === "aptos"
       ? transfer.transaction_hash.toLowerCase()
       : transfer.transaction_hash;
   return [
@@ -132,7 +133,7 @@ export function buildWalletFlowGraph(
     for (const transfer of transfers) {
       if (
         !isEvmNetworkId(transfer.network) &&
-        !["tron", "solana", "xrpl", "ton"].includes(
+        !["tron", "solana", "xrpl", "ton", "aptos"].includes(
           transfer.network.toLowerCase(),
         )
       ) {

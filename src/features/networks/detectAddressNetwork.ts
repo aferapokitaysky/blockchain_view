@@ -1,6 +1,7 @@
 export type SupportedNetwork =
   | "bitcoin"
   | "cardano"
+  | "aptos"
   | "tron"
   | "solana"
   | "xrpl"
@@ -35,6 +36,12 @@ export type AddressDetection =
       status: "detected";
       network: "cardano";
       confidence: "format-and-checksum";
+      message: string;
+    }
+  | {
+      status: "detected";
+      network: "aptos";
+      confidence: "format";
       message: string;
     }
   | {
@@ -285,6 +292,16 @@ export async function detectAddressNetwork(
       confidence: "format-and-checksum",
       message:
         "Cardano mainnet payment address verified by format and checksum.",
+    };
+  }
+
+  if (/^0x[\da-f]{64}$/i.test(address)) {
+    return {
+      status: "detected",
+      network: "aptos",
+      confidence: "format",
+      message:
+        "This is a 32-byte Aptos address format. Confirm Aptos before adding it.",
     };
   }
   if (/^(Ae2|DdzFF)/.test(address)) {

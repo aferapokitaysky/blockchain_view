@@ -63,6 +63,12 @@ fn state(pool: PgPool) -> ApiState {
             redis::Client::open("redis://127.0.0.1:1/").unwrap(),
         )
         .expect("тестовая конфигурация Cardano должна разбираться"),
+        aptos: tracefold_api::aptos_sync::AptosClient::new(
+            "https://127.0.0.1/graphql",
+            None,
+            reqwest::Client::new(),
+        )
+        .expect("тестовая конфигурация Aptos должна разбираться"),
     }
 }
 

@@ -60,7 +60,8 @@ export type ObservedTransfer = {
     | "trc20"
     | "xrpl_native"
     | "cardano_native"
-    | "cardano_asset";
+    | "cardano_asset"
+    | "aptos_fungible";
   source_host?: string;
   token_decimals?: number | null;
   token_contract_address?: string | null;

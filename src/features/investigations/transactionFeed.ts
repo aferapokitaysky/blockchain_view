@@ -59,6 +59,7 @@ const NETWORK_NAMES: Record<string, TransactionFeedItem["network"]> = {
   ethereum: "Ethereum",
   bitcoin: "Bitcoin",
   cardano: "Cardano",
+  aptos: "Aptos",
   base: "Base",
   arbitrum: "Arbitrum",
   solana: "Solana",
