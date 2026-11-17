@@ -219,6 +219,66 @@ describe("investigation API client", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("tracks a graph counterparty in the supplied investigation without fallback lookup", async () => {
+    const investigationId = "750e8400-e29b-41d4-a716-446655440000";
+    const trackedCounterparty = {
+      ...trackedAddress,
+      id: "850e8400-e29b-41d4-a716-446655440000",
+      investigation_id: investigationId,
+      network: "eip155:137",
+      address: "0xabcdef0123456789abcdef0123456789abcdef01",
+      label: "Exchange",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(trackedCounterparty, 201));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      trackWallet({
+        investigationId,
+        network: "eip155:137",
+        address: "  0xABCDEF0123456789ABCDEF0123456789ABCDEF01  ",
+        label: " Exchange ",
+      }),
+    ).resolves.toEqual(trackedCounterparty);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://127.0.0.1:8080/api/v1/investigations/${investigationId}/addresses`,
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      network: "eip155:137",
+      address: trackedCounterparty.address,
+      label: "Exchange",
+    });
+  });
+
+  it("keeps duplicate-counterparty conflicts scoped to the source investigation", async () => {
+    const investigationId = "950e8400-e29b-41d4-a716-446655440000";
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(
+        { error: { code: "conflict", message: "duplicate" } },
+        409,
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      trackWallet({
+        investigationId,
+        network: "ethereum",
+        address: trackedAddress.address,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `http://127.0.0.1:8080/api/v1/investigations/${investigationId}/addresses`,
+    );
+  });
+
   it("preserves Base58 case when tracking TRON addresses", async () => {
     const tronAddress = "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM";
     const fetchMock = vi
