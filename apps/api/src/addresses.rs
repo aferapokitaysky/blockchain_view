@@ -141,7 +141,26 @@ fn normalize_catalogued_address(
         crate::networks::NetworkFamily::Xrpl => Err(ApiError::UnsupportedNetwork),
         crate::networks::NetworkFamily::Ton if network.id == "ton" => normalize_ton_address(value),
         crate::networks::NetworkFamily::Ton => Err(ApiError::UnsupportedNetwork),
+        crate::networks::NetworkFamily::Aptos if network.id == "aptos" => {
+            normalize_aptos_address(value)
+        }
+        crate::networks::NetworkFamily::Aptos => Err(ApiError::UnsupportedNetwork),
     }
+}
+
+pub(crate) fn normalize_aptos_address(value: &str) -> Result<String, ApiError> {
+    let address = value
+        .trim()
+        .strip_prefix("0x")
+        .or_else(|| value.trim().strip_prefix("0X"))
+        .unwrap_or(value.trim());
+    if address.is_empty()
+        || address.len() > 64
+        || !address.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(ApiError::Validation("Неверный формат адреса Aptos"));
+    }
+    Ok(format!("0x{:0>64}", address.to_ascii_lowercase()))
 }
 
 pub(crate) fn normalize_ton_address(value: &str) -> Result<String, ApiError> {
@@ -373,8 +392,8 @@ async fn ensure_investigation(state: &ApiState, id: Uuid) -> Result<(), ApiError
 #[cfg(test)]
 mod tests {
     use super::{
-        Network, normalize_cardano_address, normalize_catalogued_address, normalize_solana_address,
-        normalize_tron_address, normalize_xrpl_address,
+        Network, normalize_aptos_address, normalize_cardano_address, normalize_catalogued_address,
+        normalize_solana_address, normalize_tron_address, normalize_xrpl_address,
     };
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
@@ -384,6 +403,17 @@ mod tests {
         health::unavailable_state,
         networks::{NetworkFamily, NetworkInfo},
     };
+
+    #[test]
+    fn normalizes_aptos_hex_addresses_to_full_lowercase_form() {
+        assert_eq!(
+            normalize_aptos_address("0xAbC").unwrap(),
+            format!("0x{:0>64}", "abc")
+        );
+        assert!(normalize_aptos_address("0x").is_err());
+        assert!(normalize_aptos_address(&format!("0x{}g", "1".repeat(63))).is_err());
+        assert!(normalize_aptos_address(&format!("0x{}", "1".repeat(65))).is_err());
+    }
 
     #[test]
     fn normalizes_catalogued_evm_addresses_for_dynamic_chain_ids() {

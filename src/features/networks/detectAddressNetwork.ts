@@ -1,6 +1,7 @@
 export type SupportedNetwork =
   | "bitcoin"
   | "cardano"
+  | "aptos"
   | "tron"
   | "solana"
   | "xrpl"
@@ -35,6 +36,12 @@ export type AddressDetection =
       status: "detected";
       network: "cardano";
       confidence: "format-and-checksum";
+      message: string;
+    }
+  | {
+      status: "detected";
+      network: "aptos";
+      confidence: "format";
       message: string;
     }
   | {
@@ -287,6 +294,7 @@ export async function detectAddressNetwork(
         "Cardano mainnet payment address verified by format and checksum.",
     };
   }
+
   if (/^(Ae2|DdzFF)/.test(address)) {
     return {
       status: "ambiguous",
@@ -309,14 +317,26 @@ export async function detectAddressNetwork(
   }
 
   if (/^0x/i.test(address)) {
-    if (!isHexAddress(address)) {
-      return { status: "invalid", message: "Invalid EVM address format." };
+    if (isHexAddress(address)) {
+      return {
+        status: "ambiguous",
+        family: "EVM",
+        message:
+          "This EVM address format is shared across networks. Choose a network to continue.",
+      };
+    }
+    if (/^0x[\da-f]{1,64}$/i.test(address)) {
+      return {
+        status: "detected",
+        network: "aptos",
+        confidence: "format",
+        message:
+          "This hexadecimal account address fits Aptos. Aptos addresses are padded to 32 bytes when saved.",
+      };
     }
     return {
-      status: "ambiguous",
-      family: "EVM",
-      message:
-        "This EVM address format is shared across networks. Choose a network to continue.",
+      status: "invalid",
+      message: "Invalid EVM or Aptos address format.",
     };
   }
 

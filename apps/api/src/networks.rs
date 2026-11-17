@@ -18,6 +18,7 @@ pub enum NetworkFamily {
     Tron,
     Xrpl,
     Ton,
+    Aptos,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -260,6 +261,20 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             api_base_url: None,
             sync_provider: None,
         },
+        NetworkInfo {
+            id: "aptos".into(),
+            name: "Aptos".into(),
+            family: NetworkFamily::Aptos,
+            chain_id: None,
+            native_asset: "APT".into(),
+            explorer_url: Some("https://explorer.aptoslabs.com/".into()),
+            history_sync_available: true,
+            requires_api_key: false,
+            requires_paid_tier: false,
+            history_coverage: Some(vec!["aptos-fa"]),
+            api_base_url: None,
+            sync_provider: None,
+        },
     ];
     networks.sort_by_key(|network| network.name.to_lowercase());
     networks
@@ -417,7 +432,7 @@ mod tests {
         }"#;
 
         let networks = parse_blockscout_config(config, false).unwrap();
-        assert_eq!(networks.len(), 10);
+        assert_eq!(networks.len(), 11);
         let ethereum = networks
             .iter()
             .find(|network| network.chain_id == Some(1))

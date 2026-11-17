@@ -3,8 +3,9 @@ use std::{error::Error, time::Duration};
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::watch;
 use tracefold_api::{
-    cardano_sync::CardanoClient, etherscan_sync::EtherscanClient, evm_sync::BlockscoutClient,
-    health::HealthState, sync_worker, ton_sync::TonCenterClient, tron_sync::TronGridClient,
+    aptos_sync::AptosClient, cardano_sync::CardanoClient, etherscan_sync::EtherscanClient,
+    evm_sync::BlockscoutClient, health::HealthState, sync_worker, ton_sync::TonCenterClient,
+    tron_sync::TronGridClient,
 };
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -43,6 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tron_grid = TronGridClient::from_env(http_client.clone())?;
     let ton_center = TonCenterClient::from_env(http_client.clone())?;
     let cardano = CardanoClient::from_env(http_client.clone(), redis.clone())?;
+    let aptos = AptosClient::from_env(http_client.clone())?;
     let state = HealthState {
         database,
         redis,
@@ -55,6 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         tron_grid,
         ton_center,
         cardano,
+        aptos,
     };
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);

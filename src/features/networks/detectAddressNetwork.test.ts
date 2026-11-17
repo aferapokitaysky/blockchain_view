@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
 import { detectAddressNetwork } from "./detectAddressNetwork";
 
 describe("detectAddressNetwork", () => {
+  it("recognizes Aptos 32-byte hex addresses", async () => {
+    await expect(
+      detectAddressNetwork(`0x${"ab".repeat(32)}`),
+    ).resolves.toMatchObject({
+      status: "detected",
+      network: "aptos",
+      confidence: "format",
+    });
+    await expect(detectAddressNetwork("0x1")).resolves.toMatchObject({
+      status: "detected",
+      network: "aptos",
+      confidence: "format",
+    });
+  });
   it("recognizes TON raw addresses and rejects malformed checksum-friendly candidates", async () => {
     await expect(
       detectAddressNetwork(`0:${"ab".repeat(32)}`),
@@ -104,9 +118,10 @@ describe("detectAddressNetwork", () => {
     ).resolves.toMatchObject({ status: "unsupported" });
   });
 
-  it("rejects malformed EVM addresses instead of assigning a chain", async () => {
+  it("recognizes shortened Aptos hex addresses instead of rejecting them as malformed EVM", async () => {
     await expect(detectAddressNetwork("0x1234")).resolves.toMatchObject({
-      status: "invalid",
+      status: "detected",
+      network: "aptos",
     });
   });
 

@@ -7,6 +7,7 @@ use axum::{
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 pub mod addresses;
+pub mod aptos_sync;
 pub mod cardano_sync;
 pub mod config;
 pub mod error;

@@ -6,9 +6,9 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use tracefold_api::{
-    app, cardano_sync::CardanoClient, config::Config, etherscan_sync::EtherscanClient,
-    evm_sync::BlockscoutClient, health::HealthState, ton_sync::TonCenterClient,
-    tron_sync::TronGridClient,
+    app, aptos_sync::AptosClient, cardano_sync::CardanoClient, config::Config,
+    etherscan_sync::EtherscanClient, evm_sync::BlockscoutClient, health::HealthState,
+    ton_sync::TonCenterClient, tron_sync::TronGridClient,
 };
 
 #[tokio::main]
@@ -47,6 +47,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tron_grid = TronGridClient::from_env(http_client.clone())?;
     let ton_center = TonCenterClient::from_env(http_client.clone())?;
     let cardano = CardanoClient::from_env(http_client.clone(), redis.clone())?;
+    let aptos = AptosClient::from_env(http_client.clone())?;
 
     axum::serve(
         listener,
@@ -62,6 +63,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             tron_grid,
             ton_center,
             cardano,
+            aptos,
         }),
     )
     .with_graceful_shutdown(shutdown_signal())

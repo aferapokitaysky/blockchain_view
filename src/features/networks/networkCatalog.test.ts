@@ -9,6 +9,23 @@ import {
 } from "./networkCatalog";
 
 describe("network catalog helpers", () => {
+  it("accepts the Aptos mainnet catalog entry", () => {
+    const catalog = parseNetworkCatalog({
+      history_sync_available: true,
+      networks: [
+        {
+          id: "aptos",
+          name: "Aptos",
+          family: "aptos",
+          chain_id: null,
+          native_asset: "APT",
+          explorer_url: "https://explorer.aptoslabs.com/",
+          history_coverage: ["aptos-fa"],
+        },
+      ],
+    });
+    expect(catalog.networks[0]?.id).toBe("aptos");
+  });
   it("recognizes legacy EVM ids and catalog chain ids without mixing networks", () => {
     expect(isEvmNetworkId("ethereum")).toBe(true);
     expect(isEvmNetworkId("eip155:10")).toBe(true);
