@@ -136,6 +136,106 @@ fn normalize_catalogued_address(
             normalize_xrpl_address(value)
         }
         crate::networks::NetworkFamily::Xrpl => Err(ApiError::UnsupportedNetwork),
+        crate::networks::NetworkFamily::Ton if network.id == "ton" => normalize_ton_address(value),
+        crate::networks::NetworkFamily::Ton => Err(ApiError::UnsupportedNetwork),
+    }
+}
+
+pub(crate) fn normalize_ton_address(value: &str) -> Result<String, ApiError> {
+    use base64::{
+        Engine,
+        engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD},
+    };
+    let address = value.trim();
+    if let Some((workchain, account)) = address.split_once(':') {
+        if matches!(workchain, "0" | "-1")
+            && account.len() == 64
+            && account.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Ok(format!("{workchain}:{}", account.to_ascii_lowercase()));
+        }
+        return Err(ApiError::Validation("Неверный raw-адрес TON"));
+    }
+    let decoded = [URL_SAFE, URL_SAFE_NO_PAD, STANDARD, STANDARD_NO_PAD]
+        .iter()
+        .find_map(|engine| engine.decode(address).ok())
+        .ok_or(ApiError::Validation("Неверный friendly-адрес TON"))?;
+    if decoded.len() != 36 || !matches!(decoded[0], 0x11 | 0x51) {
+        return Err(ApiError::Validation(
+            "Неверный friendly-адрес основной сети TON",
+        ));
+    }
+    let checksum = crc16_xmodem(&decoded[..34]);
+    if decoded[34] != (checksum >> 8) as u8 || decoded[35] != checksum as u8 {
+        return Err(ApiError::Validation(
+            "Неверная контрольная сумма адреса TON",
+        ));
+    }
+    let workchain = decoded[1] as i8;
+    if !matches!(workchain, 0 | -1) {
+        return Err(ApiError::Validation(
+            "Адрес TON использует неподдерживаемый workchain",
+        ));
+    }
+    let account = decoded[2..34]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    Ok(format!("{workchain}:{account}"))
+}
+
+fn crc16_xmodem(bytes: &[u8]) -> u16 {
+    let mut crc = 0u16;
+    for byte in bytes {
+        crc ^= u16::from(*byte) << 8;
+        for _ in 0..8 {
+            crc = if crc & 0x8000 != 0 {
+                (crc << 1) ^ 0x1021
+            } else {
+                crc << 1
+            };
+        }
+    }
+    crc
+}
+
+#[cfg(test)]
+mod ton_address_tests {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+
+    use super::normalize_ton_address;
+
+    #[test]
+    fn normalizes_raw_ton_address_to_lowercase() {
+        let address = format!("0:{}", "AB".repeat(32));
+        assert_eq!(
+            normalize_ton_address(&address).unwrap(),
+            format!("0:{}", "ab".repeat(32))
+        );
+    }
+
+    #[test]
+    fn accepts_valid_mainnet_friendly_ton_address() {
+        let mut bytes = [0u8; 36];
+        bytes[0] = 0x11;
+        bytes[1] = 0;
+        bytes[2..34].fill(0x42);
+        let crc = super::crc16_xmodem(&bytes[..34]);
+        bytes[34] = (crc >> 8) as u8;
+        bytes[35] = crc as u8;
+        let friendly = URL_SAFE_NO_PAD.encode(bytes);
+        assert_eq!(
+            normalize_ton_address(&friendly).unwrap(),
+            format!("0:{}", "42".repeat(32))
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_friendly_checksum_and_testnet_flags() {
+        let mut bytes = [0u8; 36];
+        bytes[0] = 0x91;
+        let friendly = URL_SAFE_NO_PAD.encode(bytes);
+        assert!(normalize_ton_address(&friendly).is_err());
     }
 }
 

@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { detectAddressNetwork } from "./detectAddressNetwork";
 
 describe("detectAddressNetwork", () => {
+  it("recognizes TON raw addresses and rejects malformed checksum-friendly candidates", async () => {
+    await expect(detectAddressNetwork(`0:${"ab".repeat(32)}`)).resolves.toMatchObject({
+      status: "detected", network: "ton", confidence: "format-and-checksum",
+    });
+    await expect(detectAddressNetwork("A".repeat(48))).resolves.toMatchObject({
+      status: "invalid",
+    });
+  });
   it("does not guess which EVM chain owns a valid address", async () => {
     const result = await detectAddressNetwork(
       "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",

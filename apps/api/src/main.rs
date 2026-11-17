@@ -6,7 +6,8 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use tracefold_api::{
-    app, config::Config, evm_sync::BlockscoutClient, health::HealthState, tron_sync::TronGridClient,
+    app, config::Config, evm_sync::BlockscoutClient, health::HealthState,
+    ton_sync::TonCenterClient, tron_sync::TronGridClient,
 };
 
 #[tokio::main]
@@ -42,6 +43,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         std::env::var("XRPL_RPC_URL").unwrap_or_else(|_| "https://s2.ripple.com:51234/".into());
     let blockscout = BlockscoutClient::from_env(http_client.clone())?;
     let tron_grid = TronGridClient::from_env(http_client.clone())?;
+    let ton_center = TonCenterClient::from_env(http_client.clone())?;
 
     axum::serve(
         listener,
@@ -54,6 +56,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             xrpl_rpc_url,
             blockscout,
             tron_grid,
+            ton_center,
         }),
     )
     .with_graceful_shutdown(shutdown_signal())

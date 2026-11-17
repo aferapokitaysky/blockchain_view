@@ -127,3 +127,7 @@ This project is licensed under the Apache License, Version 2.0. See [LICENSE](LI
 Never submit private keys, seed phrases, or secrets. Tracefold is watch-only by design. Risk signals are leads for human review, not legal advice, proof of identity, or an automated basis for freezing or denying access to funds. Follow applicable law and provider terms when collecting or processing data.
 
 - `GET` `/api/v1/networks`
+
+TON mainnet history is available through TON Center API v3 for native messages and indexed Jetton transfers. Configure `TONCENTER_BASE_URL` and optionally `TONCENTER_API_KEY` on the backend. The bounded adapter requests at most 100 rows per stream page, uses separate head/backfill cursors, and stores Jetton raw units because decimals are not guaranteed. Provider indexing and retention can leave gaps; this is not a full chain index. See [TON sync details](docs/en/continuous-sync.md).
+
+TON mainnet history is available through TON Center API v3 for native messages and indexed Jetton transfers. Configure `TONCENTER_BASE_URL` and optionally `TONCENTER_API_KEY` on the backend. The bounded adapter requests at most 100 rows per stream page, uses separate head/backfill cursors, and stores Jetton raw units because decimals are not guaranteed. Provider indexing and retention can leave gaps; this is not a full chain index. See [TON sync details](docs/en/continuous-sync.md).

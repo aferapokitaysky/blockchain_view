@@ -16,6 +16,7 @@ pub enum NetworkFamily {
     Solana,
     Tron,
     Xrpl,
+    Ton,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -204,6 +205,17 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             history_coverage: Some(vec!["xrp-direct-payment"]),
             api_base_url: None,
         },
+        NetworkInfo {
+            id: "ton".into(),
+            name: "TON".into(),
+            family: NetworkFamily::Ton,
+            chain_id: None,
+            native_asset: "TON".into(),
+            explorer_url: Some("https://tonviewer.com/".into()),
+            history_sync_available: false,
+            history_coverage: Some(vec!["ton-native", "ton-jetton"]),
+            api_base_url: None,
+        },
     ];
     networks.sort_by_key(|network| network.name.to_lowercase());
     networks
@@ -280,6 +292,9 @@ pub(crate) async fn list(
     }
     if let Some(tron) = networks.iter_mut().find(|network| network.id == "tron") {
         tron.history_sync_available = state.tron_grid.is_configured();
+    }
+    if let Some(ton) = networks.iter_mut().find(|network| network.id == "ton") {
+        ton.history_sync_available = state.ton_center.is_configured();
     }
     let history_sync_available = networks
         .iter()

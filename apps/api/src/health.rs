@@ -8,6 +8,7 @@ use tokio::time::timeout;
 use tracing::warn;
 
 use crate::evm_sync::BlockscoutClient;
+use crate::ton_sync::TonCenterClient;
 use crate::tron_sync::TronGridClient;
 
 #[derive(Clone)]
@@ -20,6 +21,7 @@ pub struct HealthState {
     pub xrpl_rpc_url: String,
     pub blockscout: BlockscoutClient,
     pub tron_grid: TronGridClient,
+    pub ton_center: TonCenterClient,
 }
 
 #[cfg(test)]
@@ -38,6 +40,8 @@ pub(crate) fn unavailable_state() -> HealthState {
             .expect("тестовая конфигурация Blockscout должна разбираться"),
         tron_grid: TronGridClient::new("http://127.0.0.1:1", None, reqwest::Client::new())
             .expect("тестовая конфигурация TronGrid должна разбираться"),
+        ton_center: TonCenterClient::new("http://127.0.0.1:1", None, reqwest::Client::new())
+            .expect("тестовая конфигурация TON Center должна разбираться"),
     }
 }
 
