@@ -257,12 +257,14 @@ describe("investigation API client", () => {
 
   it("keeps duplicate-counterparty conflicts scoped to the source investigation", async () => {
     const investigationId = "950e8400-e29b-41d4-a716-446655440000";
-    const fetchMock = vi.fn().mockResolvedValueOnce(
-      jsonResponse(
-        { error: { code: "conflict", message: "duplicate" } },
-        409,
-      ),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { error: { code: "conflict", message: "duplicate" } },
+          409,
+        ),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
