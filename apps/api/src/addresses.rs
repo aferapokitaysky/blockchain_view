@@ -154,9 +154,9 @@ pub(crate) fn normalize_tron_address(value: &str) -> Result<String, ApiError> {
         .unwrap_or(address);
     let address = if hex.len() == 42 && hex[..2].eq_ignore_ascii_case("41") {
         let mut payload = Vec::with_capacity(21);
-        for pair in hex.as_bytes().chunks_exact(2) {
-            let high = (pair[0] as char).to_digit(16);
-            let low = (pair[1] as char).to_digit(16);
+        for [high, low] in hex.as_bytes().as_chunks::<2>().0 {
+            let high = (*high as char).to_digit(16);
+            let low = (*low as char).to_digit(16);
             let Some(byte) = high.zip(low).map(|(high, low)| high * 16 + low) else {
                 return Err(ApiError::Validation("Неверный формат адреса TRON"));
             };

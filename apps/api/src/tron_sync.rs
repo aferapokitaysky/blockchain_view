@@ -804,6 +804,38 @@ fn stable_event_index(identity: &str) -> i64 {
     (hash & i64::MAX as u64).max(1) as i64
 }
 
+async fn save_cursor(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    address_id: Uuid,
+    stream: &str,
+    cursor: &NextCursor,
+    updated_at: DateTime<Utc>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO tron_sync_cursors \
+         (tracked_address_id, stream, head_transaction_id, pending_head_transaction_id, \
+          pending_fingerprint, backfill_fingerprint, backfill_exhausted, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+         ON CONFLICT (tracked_address_id, stream) DO UPDATE SET \
+          head_transaction_id = EXCLUDED.head_transaction_id, \
+          pending_head_transaction_id = EXCLUDED.pending_head_transaction_id, \
+          pending_fingerprint = EXCLUDED.pending_fingerprint, \
+          backfill_fingerprint = EXCLUDED.backfill_fingerprint, \
+          backfill_exhausted = EXCLUDED.backfill_exhausted, updated_at = EXCLUDED.updated_at",
+    )
+    .bind(address_id)
+    .bind(stream)
+    .bind(&cursor.head_transaction_id)
+    .bind(&cursor.pending_head_transaction_id)
+    .bind(&cursor.pending_fingerprint)
+    .bind(&cursor.backfill_fingerprint)
+    .bind(cursor.backfill_exhausted)
+    .bind(updated_at)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -1134,36 +1166,4 @@ mod tests {
             .is_err()
         );
     }
-}
-
-async fn save_cursor(
-    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    address_id: Uuid,
-    stream: &str,
-    cursor: &NextCursor,
-    updated_at: DateTime<Utc>,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO tron_sync_cursors \
-         (tracked_address_id, stream, head_transaction_id, pending_head_transaction_id, \
-          pending_fingerprint, backfill_fingerprint, backfill_exhausted, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
-         ON CONFLICT (tracked_address_id, stream) DO UPDATE SET \
-          head_transaction_id = EXCLUDED.head_transaction_id, \
-          pending_head_transaction_id = EXCLUDED.pending_head_transaction_id, \
-          pending_fingerprint = EXCLUDED.pending_fingerprint, \
-          backfill_fingerprint = EXCLUDED.backfill_fingerprint, \
-          backfill_exhausted = EXCLUDED.backfill_exhausted, updated_at = EXCLUDED.updated_at",
-    )
-    .bind(address_id)
-    .bind(stream)
-    .bind(&cursor.head_transaction_id)
-    .bind(&cursor.pending_head_transaction_id)
-    .bind(&cursor.pending_fingerprint)
-    .bind(&cursor.backfill_fingerprint)
-    .bind(cursor.backfill_exhausted)
-    .bind(updated_at)
-    .execute(&mut **transaction)
-    .await?;
-    Ok(())
 }
