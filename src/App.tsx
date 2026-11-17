@@ -11,13 +11,11 @@ import {
   ArrowUpRight,
   Bell,
   Blocks,
-  ChevronDown,
   CircleHelp,
   Crosshair,
   ExternalLink,
   GitBranch,
   Menu,
-  MoreHorizontal,
   Plus,
   Search,
   ShieldCheck,
@@ -74,6 +72,12 @@ import "./App.css";
 
 type Network = string;
 const TRANSACTIONS_PER_PAGE = 50;
+const PRIMARY_NAVIGATION = [
+  { label: "Overview", Icon: Activity, available: true },
+  { label: "Investigations", Icon: Crosshair, available: false },
+  { label: "Watchlist", Icon: Bell, available: false },
+  { label: "Entities", Icon: Wallet, available: false },
+] as const;
 function safeExternalLink(reference: string | null): string | null {
   if (!reference) return null;
   try {
@@ -958,29 +962,28 @@ function App() {
           </span>
         </a>
         <div className="workspace-select">
-          <div className="workspace-avatar">N</div>
+          <div className="workspace-avatar">TF</div>
           <span>
-            <b>Northstar research</b>
-            <small>Personal workspace</small>
+            <b>Tracefold workspace</b>
+            <small>Local workspace</small>
           </span>
-          <ChevronDown size={15} />
         </div>
         <div className="nav-caption">Workspace</div>
         <nav className="primary-nav" aria-label="Главная навигация">
-          {[
-            ["Overview", Activity],
-            ["Investigations", Crosshair],
-            ["Watchlist", Bell],
-            ["Entities", Wallet],
-          ].map(([label, Icon]) => (
+          {PRIMARY_NAVIGATION.map(({ label, Icon, available }) => (
             <button
-              key={label as string}
+              key={label}
               className={`nav-item ${activeTab === label ? "active" : ""}`}
-              onClick={() => setActiveTab(label as string)}
+              onClick={() => {
+                if (available) setActiveTab(label);
+              }}
+              disabled={!available}
+              title={available ? undefined : `${label} is not available yet`}
+              aria-label={available ? label : `${label}, not available yet`}
             >
               <Icon size={17} />
-              <span>{label as string}</span>
-              {label === "Watchlist" && <span className="nav-count">6</span>}
+              <span>{label}</span>
+              {!available && <small className="nav-coming-soon">Soon</small>}
             </button>
           ))}
         </nav>
@@ -989,7 +992,9 @@ function App() {
           <button
             aria-label="Настроить сети"
             onClick={() =>
-              setNotice("Список сетей можно настроить в параметрах")
+              setNotice(
+                "Список сетей загружается из API. Настройте провайдеры в backend environment.",
+              )
             }
           >
             <Plus size={15} />
@@ -1022,24 +1027,17 @@ function App() {
             </span>
           </div>
           <p>
-            Saved history loads on demand. Background monitoring is not enabled.
+            Provider coverage and keys are set in the backend environment. The
+            Compose worker polls saved history when running.
           </p>
-          <button
-            onClick={() =>
-              setNotice("No chain data provider is configured yet.")
-            }
-          >
-            Manage sources <ExternalLink size={12} />
-          </button>
         </div>
-        <button className="profile-button">
-          <span className="profile-avatar">AK</span>
+        <div className="profile-button">
+          <span className="profile-avatar">TF</span>
           <span>
-            <b>Alex K.</b>
-            <small>Free plan</small>
+            <b>Local analyst</b>
+            <small>Local instance</small>
           </span>
-          <MoreHorizontal size={18} />
-        </button>
+        </div>
       </aside>
 
       <main className="main-area" id="overview">
@@ -1076,8 +1074,6 @@ function App() {
             >
               <CircleHelp size={17} />
             </button>
-            <span className="top-divider" />
-            <button className="avatar-small">AK</button>
           </div>
         </header>
         <div className="page-content">
