@@ -223,6 +223,7 @@ const networkMeta: Record<string, { color: string }> = {
   TRON: { color: "#ff5964" },
   tron: { color: "#ff5964" },
   "XRP Ledger": { color: "#20a8d8" },
+  "xrp ledger": { color: "#20a8d8" },
   xrpl: { color: "#20a8d8" },
 };
 
