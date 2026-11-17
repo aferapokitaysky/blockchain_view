@@ -1,4 +1,5 @@
 import {
+  isEvmNetworkId,
   parseNetworkCatalog,
   type NetworkCatalog,
 } from "../networks/networkCatalog";
@@ -68,6 +69,43 @@ export type ObservedTransfer = {
 export type WalletHistory = {
   address: TrackedAddress;
   transfers: ObservedTransfer[];
+};
+
+export type GraphSnapshot = {
+  id: string;
+  investigation_id: string;
+  title: string;
+  focus_network: string | null;
+  focus_address: string | null;
+  max_depth: 1 | 2 | 3;
+  source_transfer_ids: string[];
+  graph: {
+    nodes: Array<{
+      id: string;
+      network: string;
+      address: string;
+      label: string;
+      tracked: boolean;
+      x: number;
+      y: number;
+    }>;
+    edges: Array<{
+      id: string;
+      from: string;
+      to: string;
+      asset: string;
+      transfers: number;
+      amount: string;
+      decimals: number;
+      latestAt: string;
+      latestTimeKind: "block" | "observed";
+      providers: string[];
+      sourceHosts: string[];
+    }>;
+    truncated: boolean;
+    sourceTransferIds: string[];
+  };
+  created_at: string;
 };
 
 export type AddressScreeningResult = {
@@ -242,18 +280,19 @@ export async function trackWallet(input: {
   network: string;
   address: string;
   label?: string;
+  investigationId?: string;
 }): Promise<TrackedAddress> {
-  const investigationId = await ensureInvestigation();
+  const investigationId =
+    input.investigationId || (await ensureInvestigation());
   return requestJson<TrackedAddress>(
     `/api/v1/investigations/${investigationId}/addresses`,
     {
       method: "POST",
       body: JSON.stringify({
         network: input.network.toLowerCase(),
-        address:
-          input.network.toLowerCase() === "bitcoin"
-            ? input.address.trim()
-            : input.address.trim().toLowerCase(),
+        address: isEvmNetworkId(input.network)
+          ? input.address.trim().toLowerCase()
+          : input.address.trim(),
         label: input.label?.trim() || null,
       }),
     },
@@ -315,6 +354,44 @@ export async function listTrackedWalletHistories(
       address,
       transfers: await listWalletHistory(address),
     }),
+  );
+}
+
+export async function listGraphSnapshots(
+  investigationId: string,
+): Promise<GraphSnapshot[]> {
+  return requestJson<GraphSnapshot[]>(
+    `/api/v1/investigations/${investigationId}/graph-snapshots`,
+    undefined,
+    REQUEST_TIMEOUT_MS,
+    "Could not load saved investigation snapshots. Please try again.",
+  );
+}
+
+export async function saveGraphSnapshot(input: {
+  investigationId: string;
+  title: string;
+  focusNetwork: string | null;
+  focusAddress: string | null;
+  maxDepth: 1 | 2 | 3;
+  sourceTransferIds: string[];
+  graph: GraphSnapshot["graph"];
+}): Promise<GraphSnapshot> {
+  return requestJson<GraphSnapshot>(
+    `/api/v1/investigations/${input.investigationId}/graph-snapshots`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        title: input.title,
+        focus_network: input.focusNetwork,
+        focus_address: input.focusAddress,
+        max_depth: input.maxDepth,
+        source_transfer_ids: input.sourceTransferIds,
+        graph: input.graph,
+      }),
+    },
+    REQUEST_TIMEOUT_MS,
+    "Could not save the investigation snapshot. Please try again.",
   );
 }
 

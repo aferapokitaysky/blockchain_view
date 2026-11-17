@@ -16,7 +16,6 @@ import {
   Clock3,
   Copy,
   Crosshair,
-  Download,
   ExternalLink,
   Filter,
   Focus,
@@ -51,15 +50,18 @@ import {
 import {
   ApiRequestError,
   checkApiHealth,
+  listGraphSnapshots,
   listTrackedWalletHistories,
   listTrackedWallets,
   listSupportedNetworks,
   listWalletHistory,
   listWalletRiskSignals,
   screenWalletAddress,
+  saveGraphSnapshot,
   syncWalletHistory,
   trackWallet,
   type ObservedTransfer,
+  type GraphSnapshot,
   type AddressScreeningResult,
   type StoredRiskSignal,
   type TrackedAddress,
@@ -537,7 +539,6 @@ function App() {
     status: "empty",
     message: "Paste a wallet address.",
   });
-  const [saved, setSaved] = useState(false);
   const [notice, setNotice] = useState("");
   const [trackedAddresses, setTrackedAddresses] = useState<TrackedAddress[]>(
     [],
@@ -556,6 +557,12 @@ function App() {
   );
   const [flowLoading, setFlowLoading] = useState(false);
   const [flowError, setFlowError] = useState("");
+  const [flowSnapshots, setFlowSnapshots] = useState<GraphSnapshot[]>([]);
+  const [openedFlowSnapshot, setOpenedFlowSnapshot] =
+    useState<GraphSnapshot | null>(null);
+  const [savingFlowSnapshot, setSavingFlowSnapshot] = useState(false);
+  const [flowSnapshotError, setFlowSnapshotError] = useState("");
+  const [walletInvestigationId, setWalletInvestigationId] = useState("");
   const [screeningLoading, setScreeningLoading] = useState(false);
   const [screeningError, setScreeningError] = useState("");
   const [screeningResult, setScreeningResult] =
@@ -883,6 +890,22 @@ function App() {
     if (match) setSelected(match.id);
   };
 
+  const refreshInvestigationGraph = async (
+    investigationId: string,
+    addresses = trackedAddresses,
+  ) => {
+    const investigationAddresses = addresses.filter(
+      (address) => address.investigation_id === investigationId,
+    );
+    const [histories, snapshots] = await Promise.all([
+      listTrackedWalletHistories(investigationAddresses),
+      listGraphSnapshots(investigationId),
+    ]);
+    setFlowHistories(histories);
+    setFlowSnapshots(snapshots);
+    setOpenedFlowSnapshot(null);
+  };
+
   const submitAddress = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const network =
@@ -907,11 +930,15 @@ function App() {
         network,
         address: query,
         label: walletLabel,
+        investigationId: walletInvestigationId || undefined,
       });
-      setTrackedAddresses((addresses) => [
+      const nextAddresses = [
         trackedAddress,
-        ...addresses.filter((address) => address.id !== trackedAddress.id),
-      ]);
+        ...trackedAddresses.filter(
+          (address) => address.id !== trackedAddress.id,
+        ),
+      ];
+      setTrackedAddresses(nextAddresses);
       setSelectedAddressId(trackedAddress.id);
       setHistoryRecords(null);
       setScreeningResult(null);
@@ -919,7 +946,15 @@ function App() {
       setQuery("");
       setWalletLabel("");
       setNetworkChoice("");
+      setWalletInvestigationId("");
       setNotice(`Wallet saved to ${network}. History can be synced on demand.`);
+      if (flowHistories && walletInvestigationId) {
+        try {
+          await refreshInvestigationGraph(walletInvestigationId, nextAddresses);
+        } catch {
+          setFlowError("Wallet saved, but the graph could not be refreshed.");
+        }
+      }
     } catch (error) {
       setFormError(
         error instanceof ApiRequestError
@@ -948,6 +983,15 @@ function App() {
       }
       setHistoryRecords(records);
       setActivityRefreshKey((revision) => revision + 1);
+      if (flowHistories) {
+        try {
+          await refreshInvestigationGraph(
+            selectedTrackedAddress.investigation_id,
+          );
+        } catch {
+          setFlowError("History synced, but the graph could not be refreshed.");
+        }
+      }
       const coverage = result.may_have_more_history
         ? " The provider page limit was reached; older history may be missing."
         : "";
@@ -967,21 +1011,53 @@ function App() {
 
   const buildWalletConnections = async () => {
     if (flowLoading) return;
-    const evmAddresses = trackedAddresses.filter((address) =>
-      isEvmNetworkId(address.network),
-    );
+    const investigationId =
+      selectedTrackedAddress?.investigation_id ??
+      trackedAddresses[0]?.investigation_id;
+    if (!investigationId) return;
     setFlowLoading(true);
     setFlowError("");
     try {
-      setFlowHistories(await listTrackedWalletHistories(evmAddresses));
+      await refreshInvestigationGraph(investigationId);
     } catch (error) {
       setFlowError(
         error instanceof ApiRequestError
           ? error.message
-          : "Could not load saved EVM history. Try again.",
+          : "Could not load saved transaction history. Try again.",
       );
     } finally {
       setFlowLoading(false);
+    }
+  };
+
+  const saveCurrentGraphSnapshot = async (
+    input: Omit<GraphSnapshot, "id" | "investigation_id" | "created_at">,
+  ) => {
+    const investigationId = flowHistories?.[0]?.address.investigation_id;
+    if (!investigationId || savingFlowSnapshot) return;
+    setSavingFlowSnapshot(true);
+    setFlowSnapshotError("");
+    try {
+      const snapshot = await saveGraphSnapshot({
+        investigationId,
+        title: input.title,
+        focusNetwork: input.focus_network,
+        focusAddress: input.focus_address,
+        maxDepth: input.max_depth,
+        sourceTransferIds: input.source_transfer_ids,
+        graph: input.graph,
+      });
+      setFlowSnapshots((current) => [snapshot, ...current]);
+      setOpenedFlowSnapshot(snapshot);
+      setNotice("Investigation snapshot saved.");
+    } catch (error) {
+      setFlowSnapshotError(
+        error instanceof ApiRequestError
+          ? error.message
+          : "Could not save the investigation snapshot. Try again.",
+      );
+    } finally {
+      setSavingFlowSnapshot(false);
     }
   };
 
@@ -1046,6 +1122,7 @@ function App() {
     setWalletLabel("");
     setNetworkChoice("");
     setFormError("");
+    setWalletInvestigationId("");
     setShowAdd(true);
   };
 
@@ -1204,13 +1281,6 @@ function App() {
               <p>Track how value moves across addresses and networks.</p>
             </div>
             <div className="heading-actions">
-              <button
-                className="button button-secondary"
-                onClick={() => setSaved(!saved)}
-              >
-                {saved ? <ShieldCheck size={16} /> : <Download size={16} />}{" "}
-                {saved ? "Saved to watchlist" : "Save investigation"}
-              </button>
               <button className="button button-primary" onClick={openAddWallet}>
                 <Plus size={17} /> Add wallet
               </button>
@@ -1850,8 +1920,8 @@ function App() {
               <div>
                 <strong>Trace direct wallet links</strong>
                 <p>
-                  Loads saved EVM history and connects observed sender and
-                  recipient addresses.
+                  Loads saved history for the selected investigation and links
+                  observed senders and recipients across supported networks.
                 </p>
               </div>
               <button
@@ -1860,9 +1930,7 @@ function App() {
                 disabled={
                   flowLoading ||
                   addressesLoading ||
-                  !trackedAddresses.some((address) =>
-                    isEvmNetworkId(address.network),
-                  )
+                  trackedAddresses.length === 0
                 }
               >
                 {flowLoading ? "Loading histories…" : "Build transfer links"}
@@ -1881,16 +1949,30 @@ function App() {
             )}
             {flowHistories && (
               <WalletFlowGraph
+                key={openedFlowSnapshot?.id ?? "live-graph"}
                 histories={flowHistories}
                 networkNames={networkNames}
-                onTrackCounterparty={(network, address) => {
+                snapshots={flowSnapshots}
+                openedSnapshot={openedFlowSnapshot}
+                savingSnapshot={savingFlowSnapshot}
+                onSaveSnapshot={(snapshot) =>
+                  void saveCurrentGraphSnapshot(snapshot)
+                }
+                onOpenSnapshot={setOpenedFlowSnapshot}
+                onTrackCounterparty={(network, address, investigationId) => {
                   setQuery(address);
                   setNetworkChoice(network);
                   setWalletLabel("");
+                  setWalletInvestigationId(investigationId);
                   setFormError("");
                   setShowAdd(true);
                 }}
               />
+            )}
+            {flowSnapshotError && (
+              <div className="address-state address-error" role="alert">
+                {flowSnapshotError}
+              </div>
             )}
           </section>
 

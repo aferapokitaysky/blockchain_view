@@ -10,6 +10,7 @@ pub mod addresses;
 pub mod config;
 pub mod error;
 pub mod evm_sync;
+pub mod graph_snapshots;
 pub mod health;
 pub mod investigations;
 pub mod networks;
@@ -36,6 +37,12 @@ pub fn app(state: ApiState) -> Router {
                 .delete(risk_signals::delete),
         )
         .layer(DefaultBodyLimit::max(risk_signals::MAX_REQUEST_BYTES));
+    let graph_snapshot_routes = Router::new()
+        .route(
+            "/api/v1/investigations/{investigation_id}/graph-snapshots",
+            get(graph_snapshots::list).post(graph_snapshots::create),
+        )
+        .layer(DefaultBodyLimit::max(graph_snapshots::MAX_REQUEST_BYTES));
 
     Router::new()
         .route("/health/live", get(health::live))
@@ -59,6 +66,7 @@ pub fn app(state: ApiState) -> Router {
         )
         .route("/api/v1/screening/address", get(sanctions::screen_address))
         .merge(risk_signal_routes)
+        .merge(graph_snapshot_routes)
         .with_state(state)
         .layer(
             CorsLayer::new()

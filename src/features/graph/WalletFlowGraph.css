@@ -173,3 +173,34 @@
     transition: none;
   }
 }
+.flow-snapshot-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #202d2e;
+  background: #121b1c;
+}
+
+.flow-snapshot-toolbar .button {
+  min-height: 31px;
+  font-size: 10px;
+}
+
+.flow-snapshot-toolbar select {
+  min-height: 31px;
+  max-width: min(360px, 70vw);
+  padding: 4px 26px 4px 9px;
+  border: 1px solid #344745;
+  border-radius: 5px;
+  color: #d3dfda;
+  background: #182322;
+  font: inherit;
+  font-size: 10px;
+}
+
+.flow-snapshot-toolbar select:focus-visible {
+  outline: 2px solid #68cdb8;
+  outline-offset: 2px;
+}

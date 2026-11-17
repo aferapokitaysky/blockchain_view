@@ -49,6 +49,7 @@ export type WalletFlowGraphModel = {
   nodes: FlowNode[];
   edges: FlowEdge[];
   truncated: boolean;
+  sourceTransferIds: string[];
 };
 
 export type ObservedPathAnalysis = {
@@ -58,13 +59,22 @@ export type ObservedPathAnalysis = {
 };
 
 function addressKey(network: string, address: string): string {
-  return `${network.toLowerCase()}:${address.toLowerCase()}`;
+  const normalizedNetwork = network.toLowerCase();
+  const normalizedAddress = isEvmNetworkId(normalizedNetwork)
+    ? address.toLowerCase()
+    : address;
+  return `${normalizedNetwork}:${normalizedAddress}`;
 }
 
 function eventKey(transfer: ObservedTransfer): string {
+  const network = transfer.network.toLowerCase();
+  const transactionHash =
+    isEvmNetworkId(network) || network === "tron" || network === "xrpl"
+      ? transfer.transaction_hash.toLowerCase()
+      : transfer.transaction_hash;
   return [
-    transfer.network.toLowerCase(),
-    transfer.transaction_hash.toLowerCase(),
+    network,
+    transactionHash,
     transfer.transfer_kind ?? "evm_native",
     transfer.event_index ?? -1,
   ].join(":");
@@ -97,10 +107,16 @@ export function buildWalletFlowGraph(
   });
 
   const uniqueEvents = new Map<string, ObservedTransfer>();
+  const sourceTransferIds = new Set<string>();
   let truncated = false;
   for (const { transfers } of histories) {
     for (const transfer of transfers) {
-      if (!isEvmNetworkId(transfer.network)) continue;
+      if (
+        !isEvmNetworkId(transfer.network) &&
+        !["tron", "solana", "xrpl"].includes(transfer.network.toLowerCase())
+      ) {
+        continue;
+      }
       if (!transfer.from_address || !transfer.to_address) continue;
       const key = eventKey(transfer);
       if (!uniqueEvents.has(key)) {
@@ -110,6 +126,7 @@ export function buildWalletFlowGraph(
         }
         uniqueEvents.set(key, transfer);
       }
+      sourceTransferIds.add(transfer.id);
     }
     if (truncated) break;
   }
@@ -135,8 +152,11 @@ export function buildWalletFlowGraph(
     const to = addressKey(transfer.network, transfer.to_address!);
     nodeKeys.add(from);
     nodeKeys.add(to);
-    const assetKey =
-      transfer.token_contract_address?.toLowerCase() || transfer.asset;
+    const assetKey = transfer.token_contract_address
+      ? isEvmNetworkId(transfer.network)
+        ? transfer.token_contract_address.toLowerCase()
+        : transfer.token_contract_address
+      : transfer.asset;
     const id = `${from}>${to}:${assetKey}`;
     const observedAt = transfer.block_time ?? transfer.observed_at;
     const timeKind = transfer.block_time ? "block" : "observed";
@@ -210,8 +230,9 @@ export function buildWalletFlowGraph(
 
   const radius = orderedNodeKeys.length > 1 ? 180 : 0;
   const nodes = orderedNodeKeys.map((id, index) => {
-    const [, address] = id.split(":");
-    const [network] = id.split(":");
+    const separator = id.lastIndexOf(":");
+    const network = id.slice(0, separator);
+    const address = id.slice(separator + 1);
     const tracked = knownAddresses.get(id);
     const angle = (2 * Math.PI * index) / Math.max(orderedNodeKeys.length, 1);
     return {
@@ -225,7 +246,7 @@ export function buildWalletFlowGraph(
     };
   });
 
-  return { nodes, edges, truncated };
+  return { nodes, edges, truncated, sourceTransferIds: [...sourceTransferIds] };
 }
 
 export function findObservedPaths(

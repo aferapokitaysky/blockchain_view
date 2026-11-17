@@ -73,6 +73,7 @@ describe("wallet flow graph", () => {
     const graph = buildWalletFlowGraph([history]);
 
     expect(graph.nodes).toHaveLength(2);
+    expect(graph.sourceTransferIds).toEqual(["event-1"]);
     expect(graph.nodes.find((node) => node.tracked)?.label).toBe("Treasury");
     expect(graph.edges).toMatchObject([
       {
@@ -160,6 +161,46 @@ describe("wallet flow graph", () => {
       edges: [],
       truncated: false,
     });
+  });
+
+  it("keeps TRON addresses case-sensitive and includes token counterparties", () => {
+    const tronAddress = "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM";
+    const counterparty = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+    const history = {
+      address: { ...trackedAddress, network: "tron", address: tronAddress },
+      transfers: [
+        transfer({
+          id: "tron-event",
+          network: "tron",
+          transaction_hash: "aBcD",
+          transfer_kind: "trc20",
+          token_contract_address: counterparty,
+          from_address: tronAddress,
+          to_address: counterparty,
+        }),
+      ],
+    } as unknown as WalletHistory;
+
+    const graph = buildWalletFlowGraph([history]);
+
+    expect(graph.nodes.map(({ address }) => address)).toContain(tronAddress);
+    expect(graph.nodes.map(({ address }) => address)).toContain(counterparty);
+    expect(graph.nodes.find(({ tracked }) => tracked)?.address).toBe(
+      tronAddress,
+    );
+    expect(graph.edges[0]?.asset).toBe("USDC");
+    expect(graph.sourceTransferIds).toEqual(["tron-event"]);
+  });
+
+  it("parses dynamic EVM network ids without dropping the chain id", () => {
+    const history = {
+      address: { ...trackedAddress, network: "eip155:10" },
+      transfers: [transfer({ network: "eip155:10" })],
+    } as unknown as WalletHistory;
+
+    expect(
+      buildWalletFlowGraph([history]).nodes.map(({ network }) => network),
+    ).toEqual(["eip155:10", "eip155:10"]);
   });
 });
 

@@ -87,6 +87,120 @@ async fn investigation_and_address_routes_round_trip_through_postgres(pool: PgPo
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn graph_snapshot_is_saved_and_rejects_observations_from_another_case(pool: PgPool) {
+    let state = test_state(pool);
+    let first = create_investigation(&state, "Graph case").await;
+    let second = create_investigation(&state, "Other case").await;
+    let first_address = create_address(&state, first.id).await;
+    let second_address = create_address(&state, second.id).await;
+    let first_transfer = Uuid::new_v4();
+    let second_transfer = Uuid::new_v4();
+    for (id, address_id) in [
+        (first_transfer, first_address.id),
+        (second_transfer, second_address.id),
+    ] {
+        sqlx::query(
+            "INSERT INTO observed_transfers \
+             (id, tracked_address_id, network, transaction_hash, direction, asset, confirmed, provider, \
+              event_index, transfer_kind, from_address, to_address) \
+             VALUES ($1, $2, 'tron', $3, 'outbound', 'TRX', TRUE, 'TronGrid', 0, 'tron_native', $4, $5)",
+        )
+        .bind(id)
+        .bind(address_id)
+        .bind(format!("tx-{id}"))
+        .bind("TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM")
+        .bind("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")
+        .execute(&state.database)
+        .await
+        .unwrap();
+    }
+
+    let body = serde_json::json!({
+        "title": "TRON flow",
+        "focus_network": "tron",
+        "focus_address": "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM",
+        "max_depth": 2,
+        "source_transfer_ids": [first_transfer],
+        "graph": {"nodes": [], "edges": [], "truncated": false, "sourceTransferIds": [first_transfer]},
+    });
+    let body = body.to_string();
+    let response = send(
+        state.clone(),
+        Method::POST,
+        &format!("/api/v1/investigations/{}/graph-snapshots", first.id),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let snapshot: serde_json::Value = response_json(response).await;
+    assert_eq!(snapshot["title"], "TRON flow");
+    assert_eq!(
+        snapshot["source_transfer_ids"][0],
+        first_transfer.to_string()
+    );
+
+    let response = send(
+        state.clone(),
+        Method::GET,
+        &format!("/api/v1/investigations/{}/graph-snapshots", first.id),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let snapshots: Vec<serde_json::Value> = response_json(response).await;
+    assert_eq!(snapshots.len(), 1);
+    assert_eq!(snapshots[0]["graph"]["nodes"], serde_json::json!([]));
+
+    let invalid_body = serde_json::json!({
+        "title": "Cross-case source",
+        "focus_network": null,
+        "focus_address": null,
+        "max_depth": 1,
+        "source_transfer_ids": [second_transfer],
+        "graph": {"nodes": [], "edges": []},
+    });
+    let invalid_body = invalid_body.to_string();
+    let response = send(
+        state,
+        Method::POST,
+        &format!("/api/v1/investigations/{}/graph-snapshots", first.id),
+        Some(&invalid_body),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+async fn create_investigation(state: &ApiState, name: &str) -> Investigation {
+    let body = serde_json::json!({"name": name});
+    let body = body.to_string();
+    let response = send(
+        state.clone(),
+        Method::POST,
+        "/api/v1/investigations",
+        Some(&body),
+    )
+    .await;
+    response_json(response).await
+}
+
+async fn create_address(state: &ApiState, investigation_id: Uuid) -> TrackedAddress {
+    let body = serde_json::json!({
+        "network": "tron",
+        "address": "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM"
+    });
+    let body = body.to_string();
+    let response = send(
+        state.clone(),
+        Method::POST,
+        &format!("/api/v1/investigations/{investigation_id}/addresses"),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    response_json(response).await
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn network_constraint_accepts_legacy_eip155_solana_tron_and_xrpl_ids(pool: PgPool) {
     let investigation_id = sqlx::query_scalar::<_, Uuid>(
         "INSERT INTO investigations (name) VALUES ('Network constraint') RETURNING id",
