@@ -25,6 +25,12 @@ export type AddressDetection =
       message: string;
     }
   | {
+      status: "detected";
+      network: "ton";
+      confidence: "format-and-checksum";
+      message: string;
+    }
+  | {
       status: "ambiguous";
       family: "EVM" | "Solana-compatible" | "Tron-compatible";
       message: string;
@@ -112,6 +118,38 @@ async function isValidXrplClassicAddress(address: string): Promise<boolean> {
   return decoded.slice(21).every((byte, index) => byte === second[index]);
 }
 
+function isValidTonAddress(address: string): boolean {
+  const raw = /^(-?\d+):([\da-f]{64})$/i.exec(address);
+  if (raw) return raw[1] === "0" || raw[1] === "-1";
+  if (!/^[A-Za-z0-9_-]{48}$/.test(address)) return false;
+  try {
+    const binary = atob(address.replace(/-/g, "+").replace(/_/g, "/"));
+    const bytes = Uint8Array.from(binary, (character) =>
+      character.charCodeAt(0),
+    );
+    if (
+      bytes.length !== 36 ||
+      ![0x11, 0x51].includes(bytes[0]) ||
+      ![0, 255].includes(bytes[1])
+    ) {
+      return false;
+    }
+    let crc = 0;
+    for (const byte of bytes.slice(0, 34)) {
+      crc ^= byte << 8;
+      for (let bit = 0; bit < 8; bit += 1) {
+        crc =
+          (crc & 0x8000) !== 0
+            ? ((crc << 1) ^ 0x1021) & 0xffff
+            : (crc << 1) & 0xffff;
+      }
+    }
+    return bytes[34] === crc >> 8 && bytes[35] === (crc & 0xff);
+  } catch {
+    return false;
+  }
+}
+
 function polymod(values: number[]): bigint {
   let checksum = 1n;
   for (const value of values) {
@@ -192,6 +230,18 @@ export async function detectAddressNetwork(
 ): Promise<AddressDetection> {
   const address = input.trim();
   if (!address) return { status: "empty", message: "Paste a wallet address." };
+
+  if (/^(-?\d+:|[A-Za-z0-9_-]{48}$)/.test(address)) {
+    if (!isValidTonAddress(address)) {
+      return { status: "invalid", message: "Invalid TON address or checksum." };
+    }
+    return {
+      status: "detected",
+      network: "ton",
+      confidence: "format-and-checksum",
+      message: "TON mainnet address verified by format and checksum.",
+    };
+  }
 
   if (/^0x/i.test(address)) {
     if (!isHexAddress(address)) {

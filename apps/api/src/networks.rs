@@ -16,6 +16,7 @@ pub enum NetworkFamily {
     Solana,
     Tron,
     Xrpl,
+    Ton,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -204,6 +205,17 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             history_coverage: Some(vec!["xrp-direct-payment"]),
             api_base_url: None,
         },
+        NetworkInfo {
+            id: "ton".into(),
+            name: "TON".into(),
+            family: NetworkFamily::Ton,
+            chain_id: None,
+            native_asset: "TON".into(),
+            explorer_url: Some("https://tonviewer.com/".into()),
+            history_sync_available: false,
+            history_coverage: Some(vec!["ton-native", "ton-jetton"]),
+            api_base_url: None,
+        },
     ];
     networks.sort_by_key(|network| network.name.to_lowercase());
     networks
@@ -281,6 +293,9 @@ pub(crate) async fn list(
     if let Some(tron) = networks.iter_mut().find(|network| network.id == "tron") {
         tron.history_sync_available = state.tron_grid.is_configured();
     }
+    if let Some(ton) = networks.iter_mut().find(|network| network.id == "ton") {
+        ton.history_sync_available = state.ton_center.is_configured();
+    }
     let history_sync_available = networks
         .iter()
         .any(|network| network.history_sync_available);
@@ -308,7 +323,7 @@ mod tests {
         }"#;
 
         let networks = parse_blockscout_config(config, false).unwrap();
-        assert_eq!(networks.len(), 8); // Каталог включает шесть fallback-сетей.
+        assert_eq!(networks.len(), 9); // Каталог включает восемь встроенных сетей.
         let ethereum = networks
             .iter()
             .find(|network| network.chain_id == Some(1))
@@ -322,6 +337,9 @@ mod tests {
         assert_eq!(optimism.family, NetworkFamily::Evm);
         assert!(networks.iter().all(|network| network.name != "Sepolia"));
         assert!(optimism.history_sync_available);
+        let ton = networks.iter().find(|network| network.id == "ton").unwrap();
+        assert_eq!(ton.family, NetworkFamily::Ton);
+        assert_eq!(ton.history_coverage, Some(vec!["ton-native", "ton-jetton"]));
     }
 
     #[test]

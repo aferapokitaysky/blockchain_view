@@ -80,6 +80,12 @@ fn test_state(database: PgPool) -> ApiState {
             reqwest::Client::new(),
         )
         .expect("тестовый TronGrid URL должен разбираться"),
+        ton_center: tracefold_api::ton_sync::TonCenterClient::new(
+            "http://127.0.0.1:1",
+            None,
+            reqwest::Client::new(),
+        )
+        .expect("тестовый TON Center URL должен разбираться"),
     }
 }
 

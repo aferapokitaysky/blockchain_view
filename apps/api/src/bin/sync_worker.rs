@@ -3,7 +3,8 @@ use std::{error::Error, time::Duration};
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::watch;
 use tracefold_api::{
-    evm_sync::BlockscoutClient, health::HealthState, sync_worker, tron_sync::TronGridClient,
+    evm_sync::BlockscoutClient, health::HealthState, sync_worker, ton_sync::TonCenterClient,
+    tron_sync::TronGridClient,
 };
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -39,6 +40,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         std::env::var("XRPL_RPC_URL").unwrap_or_else(|_| "https://s2.ripple.com:51234/".into());
     let blockscout = BlockscoutClient::from_env(http_client.clone())?;
     let tron_grid = TronGridClient::from_env(http_client.clone())?;
+    let ton_center = TonCenterClient::from_env(http_client.clone())?;
     let state = HealthState {
         database,
         redis,
@@ -48,6 +50,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         xrpl_rpc_url,
         blockscout,
         tron_grid,
+        ton_center,
     };
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);

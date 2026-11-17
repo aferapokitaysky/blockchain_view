@@ -18,6 +18,7 @@ pub mod risk_signals;
 pub mod sanctions;
 pub mod solana_sync;
 pub mod sync_worker;
+pub mod ton_sync;
 pub mod transfers;
 pub mod tron_sync;
 pub mod xrpl_sync;
