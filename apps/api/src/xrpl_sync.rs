@@ -365,6 +365,7 @@ fn parse_transaction(row: &Value, tracked: &str) -> Vec<Transfer> {
     } else {
         ("outbound", tx_account, tx_destination)
     };
+    let amount = amount.to_string();
     vec![Transfer {
         hash,
         event_index: 0,
