@@ -26,7 +26,7 @@ Run the import again when you want to refresh the data. There is no scheduled up
 GET /api/v1/screening/address?network=ethereum&address=0x...
 ```
 
-The endpoint returns the source name, list publication value, local import time, and exact matches. It supports Bitcoin (`XBT`) and Ethereum (`ETH`). Base and Arbitrum return `network_not_covered`, because OFAC's `ETH` currency identifier does not establish that the entry applies to those networks.
+The endpoint returns the source name, list publication value, local import time, and exact matches. It supports Bitcoin (`XBT`), Ethereum (`ETH`), TRON (`TRX`), and XRP Ledger (`XRP`) using the currency labels in the SDN snapshot. Base, Arbitrum, and other EVM networks return `network_not_covered`: an `ETH` identifier does not establish that an entry applies to those networks. TRX and XRP checks cover only those native currency identifiers; they do not screen USDT, other tokens, or contract addresses as if they were TRX/XRP accounts.
 
 Possible `status` values:
 
@@ -35,6 +35,6 @@ Possible `status` values:
 - `source_not_imported`: no local snapshot is available. This is not a negative result.
 - `network_not_covered`: the endpoint does not map this network to an OFAC currency identifier.
 
-OFAC describes digital currency address lookup as exact-match search. Tracefold does not use fuzzy matching, infer identity, follow transaction hops, or add these results to the demo score. A non-match is limited to this source, currency, and snapshot. See OFAC's [virtual currency address FAQ](https://ofac.treasury.gov/faqs/594) and [address format FAQ](https://ofac.treasury.gov/faqs/563).
+OFAC describes digital currency address lookup as exact-match search and says the SDN address field identifies its currency. Tracefold does not use fuzzy matching, infer identity, follow transaction hops, or treat a match as a legal conclusion. A non-match is limited to this source, currency, and imported snapshot; the SDN data may not include every relevant address. See OFAC's [virtual currency address FAQ](https://ofac.treasury.gov/faqs/594) and [address format FAQ](https://ofac.treasury.gov/faqs/563).
 
 The API has no authentication and is intended for local development. Do not expose it to an untrusted network.
