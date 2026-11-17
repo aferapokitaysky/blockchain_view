@@ -291,19 +291,61 @@ describe("transaction feed", () => {
     expect(item.network).toBe("OP Mainnet");
   });
 
-  it("sorts newest observations first and skips records from unknown networks", () => {
+  it("shortens Solana SPL mint labels without changing raw amount precision", () => {
+    const [item] = buildTransactionFeed([
+      history([
+        transfer({
+          network: "solana",
+          transfer_kind: "solana_spl",
+          asset: "So11111111111111111111111111111111111111112",
+          token_contract_address: "So11111111111111111111111111111111111111112",
+          token_decimals: 9,
+          spent_amount: "1250000000",
+        }),
+      ]),
+    ]);
+
+    expect(item.network).toBe("Solana");
+    expect(item.asset).toBe("SPL So111111…111112");
+    expect(item.amount).toBe("−1.25");
+  });
+
+  it("formats native SOL using its nine decimal places", () => {
+    const [item] = buildTransactionFeed([
+      history([
+        transfer({
+          network: "solana",
+          transfer_kind: "solana_native",
+          asset: "SOL",
+          token_decimals: 9,
+          spent_amount: "1250000000",
+        }),
+      ]),
+    ]);
+
+    expect(item.amount).toBe("−1.25");
+    expect(item.asset).toBe("SOL");
+  });
+
+  it("sorts observations and includes Solana records from the supported catalog", () => {
     const items = buildTransactionFeed([
       history([
         transfer({ id: "older", block_time: "2026-11-15T11:00:00Z" }),
-        transfer({ id: "unsupported", network: "solana" }),
+        transfer({
+          id: "solana",
+          network: "solana",
+          block_time: "2026-11-16T10:00:00Z",
+        }),
         transfer({ id: "newer", block_time: "2026-11-16T11:00:00Z" }),
       ]),
     ]);
 
     expect(items.map(({ id }) => id)).toEqual([
       "newer:transaction",
+      "solana:transaction",
       "older:transaction",
     ]);
+    expect(items[1].network).toBe("Solana");
   });
 
   it("formats valid timestamps and handles missing provider time", () => {

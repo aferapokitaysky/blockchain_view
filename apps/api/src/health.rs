@@ -15,6 +15,7 @@ pub struct HealthState {
     pub redis: RedisClient,
     pub http_client: reqwest::Client,
     pub bitcoin_esplora_url: String,
+    pub solana_rpc_url: String,
     pub blockscout: BlockscoutClient,
 }
 
@@ -28,6 +29,7 @@ pub(crate) fn unavailable_state() -> HealthState {
             .expect("тестовый адрес Redis должен разбираться"),
         http_client: reqwest::Client::new(),
         bitcoin_esplora_url: "http://127.0.0.1:1/api".into(),
+        solana_rpc_url: "http://127.0.0.1:1".into(),
         blockscout: BlockscoutClient::new("http://127.0.0.1:1", None, reqwest::Client::new())
             .expect("тестовая конфигурация Blockscout должна разбираться"),
     }

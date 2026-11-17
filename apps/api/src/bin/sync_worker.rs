@@ -30,12 +30,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()?;
     let bitcoin_esplora_url = std::env::var("BITCOIN_ESPLORA_URL")
         .unwrap_or_else(|_| "https://blockstream.info/api".into());
+    let solana_rpc_url =
+        std::env::var("SOLANA_RPC_URL").unwrap_or_else(|_| "https://api.mainnet.solana.com".into());
     let blockscout = BlockscoutClient::from_env(http_client.clone())?;
     let state = HealthState {
         database,
         redis,
         http_client,
         bitcoin_esplora_url,
+        solana_rpc_url,
         blockscout,
     };
 
