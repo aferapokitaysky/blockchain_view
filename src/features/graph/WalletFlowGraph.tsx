@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import type { GraphSnapshot, WalletHistory } from "../investigations/api";
-import { isEvmNetworkId } from "../networks/networkCatalog";
 import {
   buildWalletFlowGraph,
   findObservedPaths,
   getCounterpartyPrefill,
   hasGraphEvidence,
 } from "./model";
+import { getSnapshotViewState } from "./snapshotView";
 import "./WalletFlowGraph.css";
 
 type WalletFlowGraphProps = {
@@ -40,24 +40,15 @@ export function WalletFlowGraph({
   onSaveSnapshot,
   onOpenSnapshot,
 }: WalletFlowGraphProps) {
+  const [selectedNode, setSelectedNode] = useState(
+    () => getSnapshotViewState(openedSnapshot).selectedNodeId,
+  );
+  const [maxDepth, setMaxDepth] = useState<1 | 2 | 3>(
+    () => getSnapshotViewState(openedSnapshot).maxDepth,
+  );
   const graph = useMemo(
     () => openedSnapshot?.graph ?? buildWalletFlowGraph(histories),
     [histories, openedSnapshot],
-  );
-  const snapshotFocusId =
-    openedSnapshot?.focus_network && openedSnapshot.focus_address
-      ? (openedSnapshot.graph.nodes.find(
-          (node) =>
-            node.network === openedSnapshot.focus_network &&
-            (isEvmNetworkId(node.network)
-              ? node.address.toLowerCase() ===
-                openedSnapshot.focus_address?.toLowerCase()
-              : node.address === openedSnapshot.focus_address),
-        )?.id ?? "")
-      : "";
-  const [selectedNode, setSelectedNode] = useState(snapshotFocusId);
-  const [maxDepth, setMaxDepth] = useState<1 | 2 | 3>(
-    openedSnapshot?.max_depth ?? 2,
   );
   const focusedNode = graph.nodes.find((node) => node.id === selectedNode);
   const pathAnalysis = useMemo(
