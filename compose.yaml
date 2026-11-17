@@ -42,9 +42,17 @@ services:
       BITCOIN_ESPLORA_URL: ${BITCOIN_ESPLORA_URL:-https://blockstream.info/api}
       BLOCKSCOUT_BASE_URL: ${BLOCKSCOUT_BASE_URL:-https://api.blockscout.com}
       BLOCKSCOUT_API_KEY: ${BLOCKSCOUT_API_KEY:-}
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY:-}
+      ETHERSCAN_ENABLE_PAID_CHAINS: ${ETHERSCAN_ENABLE_PAID_CHAINS:-false}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet.solana.com}
       TRONGRID_BASE_URL: ${TRONGRID_BASE_URL:-https://api.trongrid.io}
       TRONGRID_API_KEY: ${TRONGRID_API_KEY:-}
+      XRPL_RPC_URL: ${XRPL_RPC_URL:-https://s2.ripple.com:51234/}
+      TONCENTER_BASE_URL: ${TONCENTER_BASE_URL:-https://toncenter.com/api/v3}
+      TONCENTER_API_KEY: ${TONCENTER_API_KEY:-}
+      BLOCKFROST_PROJECT_ID: ${BLOCKFROST_PROJECT_ID:-}
+      APTOS_INDEXER_URL: ${APTOS_INDEXER_URL:-https://api.mainnet.aptoslabs.com/v1/graphql}
+      APTOS_INDEXER_API_KEY: ${APTOS_INDEXER_API_KEY:-}
       RUST_LOG: info
     ports:
       - "127.0.0.1:${API_PORT:-8080}:8080"
@@ -66,9 +74,17 @@ services:
       BITCOIN_ESPLORA_URL: ${BITCOIN_ESPLORA_URL:-https://blockstream.info/api}
       BLOCKSCOUT_BASE_URL: ${BLOCKSCOUT_BASE_URL:-https://api.blockscout.com}
       BLOCKSCOUT_API_KEY: ${BLOCKSCOUT_API_KEY:-}
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY:-}
+      ETHERSCAN_ENABLE_PAID_CHAINS: ${ETHERSCAN_ENABLE_PAID_CHAINS:-false}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet.solana.com}
       TRONGRID_BASE_URL: ${TRONGRID_BASE_URL:-https://api.trongrid.io}
       TRONGRID_API_KEY: ${TRONGRID_API_KEY:-}
+      XRPL_RPC_URL: ${XRPL_RPC_URL:-https://s2.ripple.com:51234/}
+      TONCENTER_BASE_URL: ${TONCENTER_BASE_URL:-https://toncenter.com/api/v3}
+      TONCENTER_API_KEY: ${TONCENTER_API_KEY:-}
+      BLOCKFROST_PROJECT_ID: ${BLOCKFROST_PROJECT_ID:-}
+      APTOS_INDEXER_URL: ${APTOS_INDEXER_URL:-https://api.mainnet.aptoslabs.com/v1/graphql}
+      APTOS_INDEXER_API_KEY: ${APTOS_INDEXER_API_KEY:-}
       RUST_LOG: info
     depends_on:
       postgres:

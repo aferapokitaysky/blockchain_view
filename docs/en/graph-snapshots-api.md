@@ -1,6 +1,6 @@
 # Investigation graph snapshots API
 
-The graph explorer uses saved transfer observations from one investigation. EVM, TRON, Solana and XRPL records with sender and recipient addresses can form directed edges. Bitcoin history remains available in the feed, but address-level UTXO records do not identify counterparties.
+The graph explorer uses saved observations from one investigation. EVM, TRON, Solana, XRPL, TON, and Aptos records with sender and recipient addresses can form directed edges. Cardano can add undirected same-transaction participant evidence; these links are not transfers and are excluded from directed path finding. Bitcoin history remains available in the feed, but address-level UTXO records do not identify counterparties.
 
 ## Routes
 
