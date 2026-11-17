@@ -711,7 +711,10 @@ function App() {
         network,
         address: query,
         label: walletLabel,
-        investigationId: walletInvestigationId || undefined,
+        investigationId:
+          walletInvestigationId ||
+          activeInvestigationData.investigationId ||
+          undefined,
       });
       const nextAddresses = [
         trackedAddress,
