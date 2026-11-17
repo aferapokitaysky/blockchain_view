@@ -126,11 +126,15 @@ Cardano mainnet history uses Blockfrost when `BLOCKFROST_PROJECT_ID` is configur
 
 Issues and pull requests are welcome. Before proposing a provider or scoring change, include its data provenance, license or terms, update behavior, and how an analyst can inspect the evidence. Keep observed facts and inferred relationships distinct.
 
+See the [contribution guide](CONTRIBUTING.md) for setup and checks, and [security policy](SECURITY.md) for vulnerability reports. Translations: [Russian](docs/ru/contributing.md) · [Ukrainian](docs/uk/contributing.md).
+
 This project is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the license text.
 
 ## Security and responsible use
 
 Never submit private keys, seed phrases, or secrets. Tracefold is watch-only by design. Risk signals are leads for human review, not legal advice, proof of identity, or an automated basis for freezing or denying access to funds. Follow applicable law and provider terms when collecting or processing data.
+
+Read the [security policy](SECURITY.md) before reporting a vulnerability.
 
 - `GET` `/api/v1/networks`
 
