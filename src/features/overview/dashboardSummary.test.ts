@@ -166,7 +166,7 @@ describe("getActiveInvestigationData", () => {
       getActiveInvestigationData(
         [...addresses, otherAddress],
         [...histories, otherHistory],
-        "tracked-2",
+        "investigation-1",
       ),
     ).toEqual({
       investigationId: "investigation-1",

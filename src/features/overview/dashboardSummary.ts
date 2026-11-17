@@ -23,12 +23,8 @@ export type ActiveInvestigationData = {
 export function getActiveInvestigationData(
   addresses: TrackedAddress[],
   histories: WalletHistory[],
-  selectedAddressId: string,
+  investigationId: string | null,
 ): ActiveInvestigationData {
-  const selectedAddress = addresses.find(({ id }) => id === selectedAddressId);
-  const investigationId =
-    selectedAddress?.investigation_id ?? addresses[0]?.investigation_id ?? null;
-
   if (!investigationId) {
     return { investigationId: null, addresses: [], histories: [] };
   }

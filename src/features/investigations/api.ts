@@ -11,9 +11,10 @@ const REQUEST_TIMEOUT_MS = 8_000;
 const SYNC_TIMEOUT_MS = 260_000;
 const ADDRESS_LIST_CONCURRENCY = 4;
 
-type Investigation = {
+export type Investigation = {
   id: string;
   name: string;
+  created_at: string;
 };
 
 export type TrackedAddress = {
@@ -240,24 +241,34 @@ async function requestJson<T>(
 }
 
 async function ensureInvestigation(): Promise<string> {
-  const investigations = await requestJson<Investigation[]>(
+  const investigations = await listInvestigations();
+  if (investigations[0]) return investigations[0].id;
+
+  const created = await createInvestigation("Wallet flow investigation");
+  return created.id;
+}
+
+export async function listInvestigations(): Promise<Investigation[]> {
+  return requestJson<Investigation[]>(
     "/api/v1/investigations",
     undefined,
     REQUEST_TIMEOUT_MS,
     "Could not load investigations. Please try again.",
   );
-  if (investigations[0]) return investigations[0].id;
+}
 
-  const created = await requestJson<Investigation>(
+export async function createInvestigation(
+  name: string,
+): Promise<Investigation> {
+  return requestJson<Investigation>(
     "/api/v1/investigations",
     {
       method: "POST",
-      body: JSON.stringify({ name: "Wallet flow investigation" }),
+      body: JSON.stringify({ name: name.trim() }),
     },
     REQUEST_TIMEOUT_MS,
-    "Could not create an investigation. Please try again.",
+    "Could not create the investigation. Please try again.",
   );
-  return created.id;
 }
 
 async function mapWithConcurrency<T, R>(
@@ -280,15 +291,12 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-export async function listTrackedWallets(): Promise<TrackedAddress[]> {
-  const investigations = await requestJson<Investigation[]>(
-    "/api/v1/investigations",
-    undefined,
-    REQUEST_TIMEOUT_MS,
-    "Could not load investigations. Please try again.",
-  );
+export async function listTrackedWallets(
+  investigations?: Investigation[],
+): Promise<TrackedAddress[]> {
+  const investigationList = investigations ?? (await listInvestigations());
   const addresses = await mapWithConcurrency(
-    investigations,
+    investigationList,
     ADDRESS_LIST_CONCURRENCY,
     (investigation) =>
       requestJson<TrackedAddress[]>(

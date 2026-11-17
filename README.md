@@ -20,6 +20,10 @@ The interface presents an API-backed overview for the selected investigation, an
 - Describe a score as an exposure index, not a probability or a finding of wrongdoing.
 - Make data coverage and freshness visible; never imply that every wallet or chain is monitored.
 
+## Investigations
+
+Create or open an investigation from the **Investigations** view. Each investigation keeps its tracked addresses, saved history, and graph snapshots in its own API scope. The active investigation is remembered in this browser; if it no longer exists on the server, the first available investigation is selected. Adding a wallet from the overview targets the active investigation. When no investigation exists, the API creates the default investigation on the first wallet save. Switching investigations changes the address list, activity feed, graph, and snapshots to that investigation. Data is not merged across investigations. Investigation names and browser selection are local workflow metadata; the API currently has no authentication or per-user access control.
+
 ## Current stack
 
 - **Frontend:** React, TypeScript, Vite, and Tailwind CSS.

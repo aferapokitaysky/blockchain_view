@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createInvestigation,
   checkApiHealth,
   listSupportedNetworks,
+  listInvestigations,
   listTrackedWallets,
   listTrackedWalletHistories,
   listGraphSnapshots,
@@ -16,6 +18,7 @@ import {
 const investigation = {
   id: "550e8400-e29b-41d4-a716-446655440000",
   name: "Wallet flow investigation",
+  created_at: "2026-11-16T10:00:00Z",
 };
 
 const trackedAddress = {
@@ -39,6 +42,33 @@ afterEach(() => {
 });
 
 describe("investigation API client", () => {
+  it("lists named investigations and creates one with a trimmed name", async () => {
+    const created = { ...investigation, name: "Treasury review" };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([investigation]))
+      .mockResolvedValueOnce(jsonResponse(created, 201));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listInvestigations()).resolves.toEqual([investigation]);
+    await expect(createInvestigation("  Treasury review  ")).resolves.toEqual(
+      created,
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8080/api/v1/investigations",
+      expect.objectContaining({ headers: {} }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8080/api/v1/investigations",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "Treasury review" }),
+      }),
+    );
+  });
+
   it("loads Cardano transfers and participant evidence in one history response", async () => {
     const cardanoAddress = {
       ...trackedAddress,
