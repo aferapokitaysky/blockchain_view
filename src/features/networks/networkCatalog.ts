@@ -51,7 +51,8 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
         entry.family !== "utxo" &&
         entry.family !== "solana" &&
         entry.family !== "tron" &&
-        (entry.family !== "xrpl" && entry.family !== "ton")) ||
+        entry.family !== "xrpl" &&
+        entry.family !== "ton") ||
       !(
         entry.chain_id === null ||
         (typeof entry.chain_id === "number" &&
@@ -99,7 +100,8 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
         (entry.family !== "tron" || entry.chain_id !== null)) ||
       (entry.id === "xrpl" &&
         (entry.family !== "xrpl" || entry.chain_id !== null)) ||
-      (entry.id === "ton" && (entry.family !== "ton" || entry.chain_id !== null))
+      (entry.id === "ton" &&
+        (entry.family !== "ton" || entry.chain_id !== null))
     ) {
       return [];
     }

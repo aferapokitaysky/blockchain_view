@@ -69,7 +69,10 @@ function addressKey(network: string, address: string): string {
 function eventKey(transfer: ObservedTransfer): string {
   const network = transfer.network.toLowerCase();
   const transactionHash =
-    isEvmNetworkId(network) || network === "tron" || network === "xrpl" || network === "ton"
+    isEvmNetworkId(network) ||
+    network === "tron" ||
+    network === "xrpl" ||
+    network === "ton"
       ? transfer.transaction_hash.toLowerCase()
       : transfer.transaction_hash;
   return [
@@ -113,7 +116,9 @@ export function buildWalletFlowGraph(
     for (const transfer of transfers) {
       if (
         !isEvmNetworkId(transfer.network) &&
-        !["tron", "solana", "xrpl", "ton"].includes(transfer.network.toLowerCase())
+        !["tron", "solana", "xrpl", "ton"].includes(
+          transfer.network.toLowerCase(),
+        )
       ) {
         continue;
       }
@@ -230,7 +235,9 @@ export function buildWalletFlowGraph(
 
   const radius = orderedNodeKeys.length > 1 ? 180 : 0;
   const nodes = orderedNodeKeys.map((id, index) => {
-    const separator = id.startsWith("eip155:") ? id.indexOf(":", 7) : id.indexOf(":");
+    const separator = id.startsWith("eip155:")
+      ? id.indexOf(":", 7)
+      : id.indexOf(":");
     const network = id.slice(0, separator);
     const address = id.slice(separator + 1);
     const tracked = knownAddresses.get(id);

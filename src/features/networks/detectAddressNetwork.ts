@@ -120,11 +120,13 @@ async function isValidXrplClassicAddress(address: string): Promise<boolean> {
 
 function isValidTonAddress(address: string): boolean {
   const raw = /^(-?\d+):([\da-f]{64})$/i.exec(address);
-  if (raw) return (raw[1] === "0" || raw[1] === "-1");
+  if (raw) return raw[1] === "0" || raw[1] === "-1";
   if (!/^[A-Za-z0-9_-]{48}$/.test(address)) return false;
   try {
     const binary = atob(address.replace(/-/g, "+").replace(/_/g, "/"));
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const bytes = Uint8Array.from(binary, (character) =>
+      character.charCodeAt(0),
+    );
     if (
       bytes.length !== 36 ||
       ![0x11, 0x51].includes(bytes[0]) ||
@@ -142,7 +144,7 @@ function isValidTonAddress(address: string): boolean {
             : (crc << 1) & 0xffff;
       }
     }
-    return bytes[34] === (crc >> 8) && bytes[35] === (crc & 0xff);
+    return bytes[34] === crc >> 8 && bytes[35] === (crc & 0xff);
   } catch {
     return false;
   }

@@ -3,8 +3,12 @@ import { detectAddressNetwork } from "./detectAddressNetwork";
 
 describe("detectAddressNetwork", () => {
   it("recognizes TON raw addresses and rejects malformed checksum-friendly candidates", async () => {
-    await expect(detectAddressNetwork(`0:${"ab".repeat(32)}`)).resolves.toMatchObject({
-      status: "detected", network: "ton", confidence: "format-and-checksum",
+    await expect(
+      detectAddressNetwork(`0:${"ab".repeat(32)}`),
+    ).resolves.toMatchObject({
+      status: "detected",
+      network: "ton",
+      confidence: "format-and-checksum",
     });
     await expect(detectAddressNetwork("A".repeat(48))).resolves.toMatchObject({
       status: "invalid",
