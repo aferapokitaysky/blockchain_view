@@ -32,6 +32,8 @@ export type AddressDetection =
 
 const BASE58_ALPHABET =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const XRPL_BASE58_ALPHABET =
+  "rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz";
 const BECH32_ALPHABET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 const BECH32 = 1n;
 const BECH32M = 0x2bc830a3n;
@@ -47,12 +49,16 @@ function isHexAddress(address: string): boolean {
   return /^0x[\da-f]{40}$/i.test(address);
 }
 
-function decodeBase58(address: string): Uint8Array | null {
-  if (address.length < 26 || address.length > 44) return null;
+function decodeBase58(
+  address: string,
+  alphabet = BASE58_ALPHABET,
+  zeroDigit = "1",
+): Uint8Array | null {
+  if (address.length < 25 || address.length > 44) return null;
 
   let value = 0n;
   for (const character of address) {
-    const digit = BASE58_ALPHABET.indexOf(character);
+    const digit = alphabet.indexOf(character);
     if (digit < 0) return null;
     value = value * 58n + BigInt(digit);
   }
@@ -67,7 +73,7 @@ function decodeBase58(address: string): Uint8Array | null {
   const bytes = encoded.map((byte) => Number.parseInt(byte, 16));
 
   let leadingZeroes = 0;
-  while (address[leadingZeroes] === "1") leadingZeroes += 1;
+  while (address[leadingZeroes] === zeroDigit) leadingZeroes += 1;
   const decoded = new Uint8Array(leadingZeroes + bytes.length);
   decoded.set(bytes, leadingZeroes);
   return decoded;
@@ -98,7 +104,7 @@ async function base58CheckVersion(address: string): Promise<number | null> {
 }
 
 async function isValidXrplClassicAddress(address: string): Promise<boolean> {
-  const decoded = decodeBase58(address);
+  const decoded = decodeBase58(address, XRPL_BASE58_ALPHABET, "r");
   if (!decoded || decoded.length !== 25 || decoded[0] !== 0) return false;
   const payload = decoded.slice(0, 21);
   const first = await sha256(payload);
@@ -203,6 +209,13 @@ export async function detectAddressNetwork(
     return {
       status: "unsupported",
       message: "Bitcoin testnet addresses are not supported yet.",
+    };
+  }
+
+  if (address.startsWith("X")) {
+    return {
+      status: "unsupported",
+      message: "X-addresses are not supported. Use a classic XRP Ledger address.",
     };
   }
 

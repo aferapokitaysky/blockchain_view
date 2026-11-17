@@ -78,9 +78,13 @@ describe("network catalog helpers", () => {
       networks: [{
         id: "xrpl", name: "XRP Ledger", family: "xrpl", chain_id: null,
         native_asset: "XRP", explorer_url: "https://livenet.xrpl.org/",
+        history_coverage: ["xrp-direct-payment"],
       }],
     });
-    expect(catalog.networks).toMatchObject([{ id: "xrpl", family: "xrpl", chain_id: null }]);
+    expect(catalog.networks).toMatchObject([{
+      id: "xrpl", family: "xrpl", chain_id: null,
+      history_coverage: ["xrp-direct-payment"],
+    }]);
   });
 
   it("resolves catalog labels and preserves an unknown id as a visible fallback", () => {

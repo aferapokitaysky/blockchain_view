@@ -46,6 +46,13 @@ describe("detectAddressNetwork", () => {
     ).resolves.toMatchObject({ status: "invalid" });
   });
 
+  it("explains that X-addresses are not supported", async () => {
+    await expect(detectAddressNetwork("X7EVg4kB2e7S")).resolves.toMatchObject({
+      status: "unsupported",
+      message: expect.stringContaining("classic XRP Ledger address"),
+    });
+  });
+
   it("validates a Bitcoin Bech32 mainnet address", async () => {
     await expect(
       detectAddressNetwork("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"),

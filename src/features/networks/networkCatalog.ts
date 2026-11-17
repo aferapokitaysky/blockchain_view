@@ -1,5 +1,8 @@
 export type NetworkFamily = "evm" | "utxo" | "solana" | "tron" | "xrpl";
-export type NetworkHistoryCapability = "native-trx" | "trc20";
+export type NetworkHistoryCapability =
+  | "native-trx"
+  | "trc20"
+  | "xrp-direct-payment";
 
 export type NetworkCatalogEntry = {
   id: string;
@@ -66,7 +69,9 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
         (!Array.isArray(entry.history_coverage) ||
           !entry.history_coverage.every(
             (capability) =>
-              capability === "native-trx" || capability === "trc20",
+              capability === "native-trx" ||
+              capability === "trc20" ||
+              capability === "xrp-direct-payment",
           )))
     ) {
       return [];
@@ -179,6 +184,7 @@ export const LEGACY_NETWORKS: NetworkCatalogEntry[] = [
     chain_id: null,
     native_asset: "XRP",
     explorer_url: "https://livenet.xrpl.org/",
+    history_coverage: ["xrp-direct-payment"],
   },
 ];
 
