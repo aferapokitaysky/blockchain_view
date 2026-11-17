@@ -1,6 +1,6 @@
 use std::{collections::HashMap, env, sync::Arc, time::Duration};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use reqwest::{Client, Url};
 use serde::Deserialize;
 use serde_json::Value;
@@ -30,6 +30,21 @@ pub(crate) struct EtherscanNetwork {
 pub(crate) enum EtherscanTier {
     Free,
     Paid,
+    FreeUntil { year: i32, month: u32, day: u32 },
+}
+
+impl EtherscanTier {
+    pub(crate) fn requires_paid_tier_on(self, as_of: NaiveDate) -> bool {
+        match self {
+            Self::Free => false,
+            Self::Paid => true,
+            Self::FreeUntil { year, month, day } => {
+                as_of
+                    > NaiveDate::from_ymd_opt(year, month, day)
+                        .expect("provider tier cutoff is a valid date")
+            }
+        }
+    }
 }
 
 // Явный список не позволяет превратить переданный пользователем chain ID в адрес запроса к провайдеру.
@@ -165,7 +180,11 @@ pub(crate) const SUPPORTED_NETWORKS: &[EtherscanNetwork] = &[
         name: "HyperEVM",
         native_asset: "HYPE",
         explorer_url: "https://hyperevmscan.io/",
-        tier: EtherscanTier::Free,
+        tier: EtherscanTier::FreeUntil {
+            year: 2026,
+            month: 11,
+            day: 30,
+        },
     },
     EtherscanNetwork {
         chain_id: 1329,
@@ -336,8 +355,13 @@ impl EtherscanClient {
         self.api_key.is_some()
     }
 
-    pub(crate) fn is_network_available(&self, network: EtherscanNetwork) -> bool {
-        self.is_configured() && (network.tier == EtherscanTier::Free || self.paid_tier_enabled)
+    pub(crate) fn is_network_available_on(
+        &self,
+        network: EtherscanNetwork,
+        as_of: NaiveDate,
+    ) -> bool {
+        self.is_configured()
+            && (!network.tier.requires_paid_tier_on(as_of) || self.paid_tier_enabled)
     }
 
     async fn pace_request(&self) -> Result<(), ApiError> {
@@ -675,6 +699,7 @@ mod tests {
     use std::{collections::HashMap, sync::Arc, time::Duration};
 
     use axum::{Router, extract::Query, http::StatusCode, routing::get};
+    use chrono::NaiveDate;
     use reqwest::Url;
     use serde_json::{Value, json};
     use tokio::{net::TcpListener, sync::Mutex, time::Instant};
@@ -767,6 +792,11 @@ mod tests {
                 .iter()
                 .any(|network| { network.chain_id == 137 && network.tier == EtherscanTier::Free })
         );
+        assert!(
+            SUPPORTED_NETWORKS
+                .iter()
+                .any(|network| { network.chain_id == 10 && network.tier == EtherscanTier::Paid })
+        );
         let mut chain_ids = SUPPORTED_NETWORKS
             .iter()
             .map(|network| network.chain_id)
@@ -779,6 +809,26 @@ mod tests {
                 .iter()
                 .all(|network| network.explorer_url.starts_with("https://"))
         );
+    }
+
+    #[test]
+    fn hyper_evm_requires_paid_opt_in_after_the_published_free_period() {
+        let hyper_evm = *SUPPORTED_NETWORKS
+            .iter()
+            .find(|network| network.chain_id == 999)
+            .unwrap();
+        let before_cutoff = NaiveDate::from_ymd_opt(2026, 11, 30).unwrap();
+        let after_cutoff = NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
+        let free_client =
+            EtherscanClient::new(Some("test-key"), false, reqwest::Client::new()).unwrap();
+        let paid_client =
+            EtherscanClient::new(Some("test-key"), true, reqwest::Client::new()).unwrap();
+
+        assert!(!hyper_evm.tier.requires_paid_tier_on(before_cutoff));
+        assert!(free_client.is_network_available_on(hyper_evm, before_cutoff));
+        assert!(hyper_evm.tier.requires_paid_tier_on(after_cutoff));
+        assert!(!free_client.is_network_available_on(hyper_evm, after_cutoff));
+        assert!(paid_client.is_network_available_on(hyper_evm, after_cutoff));
     }
 
     #[tokio::test]

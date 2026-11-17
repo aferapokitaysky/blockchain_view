@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, net::IpAddr, str::FromStr};
 
 use axum::{Json, extract::State};
+use chrono::{NaiveDate, Utc};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
@@ -400,6 +401,7 @@ pub(crate) fn append_etherscan_networks(
     networks: &mut Vec<NetworkInfo>,
     provider: &crate::etherscan_sync::EtherscanClient,
 ) {
+    let as_of = Utc::now().date_naive();
     for supported in SUPPORTED_NETWORKS {
         if networks
             .iter()
@@ -407,7 +409,7 @@ pub(crate) fn append_etherscan_networks(
         {
             continue;
         }
-        networks.push(etherscan_network_info(*supported, provider));
+        networks.push(etherscan_network_info(*supported, provider, as_of));
     }
     networks.sort_by_key(|network| network.name.to_lowercase());
 }
@@ -415,6 +417,7 @@ pub(crate) fn append_etherscan_networks(
 fn etherscan_network_info(
     supported: EtherscanNetwork,
     provider: &crate::etherscan_sync::EtherscanClient,
+    as_of: NaiveDate,
 ) -> NetworkInfo {
     NetworkInfo {
         id: format!("eip155:{}", supported.chain_id),
@@ -423,9 +426,9 @@ fn etherscan_network_info(
         chain_id: Some(supported.chain_id),
         native_asset: supported.native_asset.into(),
         explorer_url: Some(supported.explorer_url.into()),
-        history_sync_available: provider.is_network_available(supported),
+        history_sync_available: provider.is_network_available_on(supported, as_of),
         requires_api_key: true,
-        requires_paid_tier: supported.tier == crate::etherscan_sync::EtherscanTier::Paid,
+        requires_paid_tier: supported.tier.requires_paid_tier_on(as_of),
         history_coverage: Some(vec!["evm-native", "evm-internal", "erc20"]),
         api_base_url: None,
         sync_provider: Some(NetworkSyncProvider::EtherscanV2),
@@ -437,6 +440,7 @@ mod tests {
     use super::{
         NetworkFamily, fallback_catalog, parse_blockscout_config, valid_public_https_base_url,
     };
+    use chrono::NaiveDate;
 
     #[test]
     fn parses_only_mainnet_metadata_and_uses_stable_ids_for_legacy_chains() {
@@ -576,6 +580,15 @@ mod tests {
             bnb.history_coverage,
             Some(vec!["evm-native", "evm-internal", "erc20"])
         );
+
+        let optimism = networks
+            .iter()
+            .find(|network| network.chain_id == Some(10))
+            .unwrap();
+        assert_eq!(optimism.id, "eip155:10");
+        assert!(optimism.requires_api_key);
+        assert!(optimism.requires_paid_tier);
+        assert!(!optimism.history_sync_available);
     }
 
     #[test]
@@ -612,6 +625,30 @@ mod tests {
             .find(|network| network.chain_id == Some(56))
             .unwrap();
         assert!(bnb.history_sync_available);
+    }
+
+    #[test]
+    fn hyper_evm_catalog_flags_change_at_the_provider_deadline() {
+        let hyper_evm = *crate::etherscan_sync::SUPPORTED_NETWORKS
+            .iter()
+            .find(|network| network.chain_id == 999)
+            .unwrap();
+        let provider = crate::etherscan_sync::EtherscanClient::new(
+            Some("test-key"),
+            false,
+            reqwest::Client::new(),
+        )
+        .unwrap();
+        let available_date = NaiveDate::from_ymd_opt(2026, 11, 30).unwrap();
+        let paid_date = NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
+
+        let available = super::etherscan_network_info(hyper_evm, &provider, available_date);
+        assert!(available.history_sync_available);
+        assert!(!available.requires_paid_tier);
+
+        let paid = super::etherscan_network_info(hyper_evm, &provider, paid_date);
+        assert!(!paid.history_sync_available);
+        assert!(paid.requires_paid_tier);
     }
 
     #[tokio::test]
