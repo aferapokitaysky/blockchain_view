@@ -323,7 +323,7 @@ mod tests {
         }"#;
 
         let networks = parse_blockscout_config(config, false).unwrap();
-        assert_eq!(networks.len(), 8); // Каталог включает шесть fallback-сетей.
+        assert_eq!(networks.len(), 9); // Каталог включает восемь встроенных сетей.
         let ethereum = networks
             .iter()
             .find(|network| network.chain_id == Some(1))
@@ -337,6 +337,9 @@ mod tests {
         assert_eq!(optimism.family, NetworkFamily::Evm);
         assert!(networks.iter().all(|network| network.name != "Sepolia"));
         assert!(optimism.history_sync_available);
+        let ton = networks.iter().find(|network| network.id == "ton").unwrap();
+        assert_eq!(ton.family, NetworkFamily::Ton);
+        assert_eq!(ton.history_coverage, Some(vec!["ton-native", "ton-jetton"]));
     }
 
     #[test]
