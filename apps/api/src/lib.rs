@@ -7,6 +7,7 @@ use axum::{
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 pub mod addresses;
+pub mod cardano_sync;
 pub mod config;
 pub mod error;
 pub mod etherscan_sync;
@@ -65,6 +66,10 @@ pub fn app(state: ApiState) -> Router {
         .route(
             "/api/v1/investigations/{investigation_id}/addresses/{address_id}/transfers",
             get(transfers::list_address_transfers),
+        )
+        .route(
+            "/api/v1/investigations/{investigation_id}/addresses/{address_id}/history",
+            get(transfers::list_address_history),
         )
         .route("/api/v1/screening/address", get(sanctions::screen_address))
         .merge(risk_signal_routes)

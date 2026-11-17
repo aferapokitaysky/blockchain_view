@@ -123,6 +123,9 @@ fn normalize_catalogued_address(
         crate::networks::NetworkFamily::Utxo if network.id == "bitcoin" => {
             Network::Bitcoin.normalize(value)
         }
+        crate::networks::NetworkFamily::Utxo if network.id == "cardano" => {
+            normalize_cardano_address(value)
+        }
         crate::networks::NetworkFamily::Utxo => Err(ApiError::UnsupportedNetwork),
         crate::networks::NetworkFamily::Solana if network.id == "solana" => {
             normalize_solana_address(value)
@@ -182,6 +185,43 @@ pub(crate) fn normalize_ton_address(value: &str) -> Result<String, ApiError> {
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
     Ok(format!("{workchain}:{account}"))
+}
+
+pub(crate) fn normalize_cardano_address(value: &str) -> Result<String, ApiError> {
+    use pallas_addresses::Address;
+
+    let address = Address::from_str(value.trim())
+        .map_err(|_| ApiError::Validation("Неверный формат адреса Cardano"))?;
+    match address {
+        Address::Shelley(address) if address.network().is_mainnet() => address
+            .to_bech32()
+            .map_err(|_| ApiError::Validation("Неверный Bech32-адрес Cardano")),
+        Address::Byron(address) => {
+            let checksum = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC);
+            if checksum.checksum(address.payload.as_ref()) != address.crc {
+                return Err(ApiError::Validation(
+                    "Неверная контрольная сумма Byron-адреса Cardano",
+                ));
+            }
+            let payload = address
+                .decode()
+                .map_err(|_| ApiError::Validation("Неверный Byron-адрес Cardano"))?;
+            if payload.attributes.iter().any(|attribute| {
+                matches!(
+                    attribute,
+                    pallas_addresses::byron::AddrAttrProperty::NetworkTag(_)
+                )
+            }) {
+                return Err(ApiError::Validation(
+                    "Byron-адрес Cardano не относится к основной сети",
+                ));
+            }
+            Ok(address.to_base58())
+        }
+        Address::Shelley(_) | Address::Stake(_) => Err(ApiError::Validation(
+            "Нужен payment-адрес основной сети Cardano",
+        )),
+    }
 }
 
 fn crc16_xmodem(bytes: &[u8]) -> u16 {
@@ -333,8 +373,8 @@ async fn ensure_investigation(state: &ApiState, id: Uuid) -> Result<(), ApiError
 #[cfg(test)]
 mod tests {
     use super::{
-        Network, normalize_catalogued_address, normalize_solana_address, normalize_tron_address,
-        normalize_xrpl_address,
+        Network, normalize_cardano_address, normalize_catalogued_address, normalize_solana_address,
+        normalize_tron_address, normalize_xrpl_address,
     };
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
@@ -418,6 +458,61 @@ mod tests {
                 .is_ok()
         );
         assert!(Network::Bitcoin.normalize("tb1qxyz").is_err());
+    }
+
+    #[test]
+    fn validates_cardano_mainnet_payment_and_byron_addresses() {
+        const SHELLEY: &str = "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x";
+        const BYRON: &str = "Ae2tdPwUPEZLs4HtbuNey7tK4hTKrwNwYtGqp7bDfCy2WdR3P6735W5Yfpe";
+
+        assert_eq!(normalize_cardano_address(SHELLEY).unwrap(), SHELLEY);
+        assert_eq!(normalize_cardano_address(BYRON).unwrap(), BYRON);
+        assert!(
+            normalize_cardano_address(
+                "stake1ux3g2c9dx2nhhehyrezyxpkstartcqmu9hk63qgfkccw5rqttygt7"
+            )
+            .is_err()
+        );
+        assert!(normalize_cardano_address("not-a-cardano-address").is_err());
+    }
+
+    #[test]
+    fn rejects_testnet_and_bad_byron_checksum() {
+        use pallas_addresses::{Address, Network, ShelleyAddress};
+
+        const SHELLEY: &str = "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x";
+        const BYRON: &str = "Ae2tdPwUPEZLs4HtbuNey7tK4hTKrwNwYtGqp7bDfCy2WdR3P6735W5Yfpe";
+
+        let Address::Shelley(shelley) = Address::from_bech32(SHELLEY).unwrap() else {
+            panic!("fixture is a Shelley payment address");
+        };
+        let testnet = ShelleyAddress::new(
+            Network::Testnet,
+            shelley.payment().clone(),
+            shelley.delegation().clone(),
+        )
+        .to_bech32()
+        .unwrap();
+        assert!(normalize_cardano_address(&testnet).is_err());
+
+        let mut byron = pallas_addresses::ByronAddress::from_base58(BYRON).unwrap();
+        byron.crc ^= 1;
+        assert!(normalize_cardano_address(&byron.to_base58()).is_err());
+    }
+
+    #[test]
+    fn rejects_byron_addresses_with_network_tags() {
+        use pallas_addresses::byron::{
+            AddrAttrProperty, AddrType, AddressPayload, ByronAddress, SpendingData,
+        };
+
+        let payload = AddressPayload::new(
+            AddrType::PubKey,
+            SpendingData::PubKey(vec![0; 32].into()),
+            vec![AddrAttrProperty::NetworkTag(vec![1].into())].into(),
+        );
+        let testnet_address = ByronAddress::from_decoded(payload).to_base58();
+        assert!(normalize_cardano_address(&testnet_address).is_err());
     }
 
     #[tokio::test]

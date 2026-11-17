@@ -145,6 +145,8 @@ function getAmountTransfers(
 ): AmountTransfer[] {
   const events = new Map<string, AmountTransfer>();
   for (const transfer of transfers) {
+    // Cardano хранит агрегированные UTxO-наблюдения, по которым нельзя выводить пары входящих и исходящих переводов.
+    if (transfer.network.toLowerCase() === "cardano") continue;
     if (!transfer.confirmed || transfer.direction !== direction) continue;
     // Время записи не заменяет on-chain время транзакции.
     if (!transfer.block_time) continue;

@@ -73,6 +73,13 @@
   opacity: 0.07;
 }
 
+.flow-edge-line.is-relationship {
+  stroke: #8998a1;
+  stroke-dasharray: 2 5;
+  opacity: 0.42;
+  animation: none;
+}
+
 .flow-edge-line.is-path {
   stroke: #e1c77e;
   stroke-dasharray: 7 5;

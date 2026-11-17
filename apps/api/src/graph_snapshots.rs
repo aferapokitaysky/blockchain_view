@@ -22,6 +22,8 @@ pub struct CreateGraphSnapshot {
     focus_address: Option<String>,
     max_depth: i16,
     source_transfer_ids: Vec<Uuid>,
+    #[serde(default)]
+    source_relationship_ids: Vec<Uuid>,
     graph: Value,
 }
 
@@ -34,6 +36,7 @@ pub struct GraphSnapshot {
     focus_address: Option<String>,
     max_depth: i16,
     source_transfer_ids: Vec<Uuid>,
+    source_relationship_ids: Vec<Uuid>,
     graph: Value,
     created_at: DateTime<Utc>,
 }
@@ -45,7 +48,7 @@ pub(crate) async fn list(
     ensure_investigation_exists(&state, investigation_id).await?;
     let snapshots = sqlx::query_as::<_, GraphSnapshot>(
         "SELECT id, investigation_id, title, focus_network, focus_address, max_depth, \
-         source_transfer_ids, graph, created_at FROM investigation_graph_snapshots \
+         source_transfer_ids, source_relationship_ids, graph, created_at FROM investigation_graph_snapshots \
          WHERE investigation_id = $1 ORDER BY created_at DESC LIMIT 100",
     )
     .bind(investigation_id)
@@ -62,7 +65,7 @@ pub(crate) async fn create(
     validate(&input)?;
     ensure_investigation_exists(&state, investigation_id).await?;
 
-    let valid_source_count = sqlx::query_scalar::<_, i64>(
+    let valid_transfer_count = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(DISTINCT transfer.id) FROM observed_transfers AS transfer \
          JOIN tracked_addresses AS address ON address.id = transfer.tracked_address_id \
          WHERE address.investigation_id = $1 AND transfer.id = ANY($2)",
@@ -71,7 +74,18 @@ pub(crate) async fn create(
     .bind(&input.source_transfer_ids)
     .fetch_one(&state.database)
     .await?;
-    if valid_source_count != input.source_transfer_ids.len() as i64 {
+    let valid_relationship_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(DISTINCT relationship.id) FROM observed_relationships AS relationship \
+         JOIN tracked_addresses AS address ON address.id = relationship.tracked_address_id \
+         WHERE address.investigation_id = $1 AND relationship.id = ANY($2)",
+    )
+    .bind(investigation_id)
+    .bind(&input.source_relationship_ids)
+    .fetch_one(&state.database)
+    .await?;
+    if valid_transfer_count != input.source_transfer_ids.len() as i64
+        || valid_relationship_count != input.source_relationship_ids.len() as i64
+    {
         return Err(ApiError::Validation(
             "Снимок содержит наблюдения не из этого расследования",
         ));
@@ -80,10 +94,10 @@ pub(crate) async fn create(
     let title = input.title.trim();
     let snapshot = sqlx::query_as::<_, GraphSnapshot>(
         "INSERT INTO investigation_graph_snapshots \
-         (investigation_id, title, focus_network, focus_address, max_depth, source_transfer_ids, graph) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         (investigation_id, title, focus_network, focus_address, max_depth, source_transfer_ids, source_relationship_ids, graph) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
          RETURNING id, investigation_id, title, focus_network, focus_address, max_depth, \
-         source_transfer_ids, graph, created_at",
+         source_transfer_ids, source_relationship_ids, graph, created_at",
     )
     .bind(investigation_id)
     .bind(title)
@@ -91,6 +105,7 @@ pub(crate) async fn create(
     .bind(input.focus_address.as_deref())
     .bind(input.max_depth)
     .bind(&input.source_transfer_ids)
+    .bind(&input.source_relationship_ids)
     .bind(input.graph)
     .fetch_one(&state.database)
     .await?;
@@ -122,8 +137,9 @@ fn validate(input: &CreateGraphSnapshot) -> Result<(), ApiError> {
     if !(1..=3).contains(&input.max_depth) {
         return Err(ApiError::Validation("Глубина графа должна быть от 1 до 3"));
     }
-    if input.source_transfer_ids.is_empty()
-        || input.source_transfer_ids.len() > MAX_SOURCE_TRANSFERS
+    if input.source_transfer_ids.len() + input.source_relationship_ids.len() == 0
+        || input.source_transfer_ids.len() + input.source_relationship_ids.len()
+            > MAX_SOURCE_TRANSFERS
     {
         return Err(ApiError::Validation(
             "Снимок должен содержать от 1 до 10000 наблюдений",
@@ -137,6 +153,13 @@ fn validate(input: &CreateGraphSnapshot) -> Result<(), ApiError> {
         return Err(ApiError::Validation(
             "Снимок содержит повторяющиеся наблюдения",
         ));
+    }
+    let unique_relationship_ids = input
+        .source_relationship_ids
+        .iter()
+        .collect::<std::collections::HashSet<_>>();
+    if unique_relationship_ids.len() != input.source_relationship_ids.len() {
+        return Err(ApiError::Validation("Снимок содержит повторяющиеся связи"));
     }
     if input.focus_network.is_some() != input.focus_address.is_some()
         || input
@@ -173,6 +196,7 @@ mod tests {
             focus_address: Some("TAddress".into()),
             max_depth: 2,
             source_transfer_ids: vec![Uuid::new_v4()],
+            source_relationship_ids: vec![],
             graph: json!({"nodes": [], "edges": []}),
         }
     }
@@ -191,5 +215,22 @@ mod tests {
         let mut input = valid_input();
         input.max_depth = 4;
         assert!(validate(&input).is_err());
+    }
+
+    #[test]
+    fn accepts_transfer_only_relationship_only_and_combined_evidence() {
+        let mut transfer_only = valid_input();
+        assert!(validate(&transfer_only).is_ok());
+
+        transfer_only.source_transfer_ids.clear();
+        transfer_only.source_relationship_ids.push(Uuid::new_v4());
+        assert!(validate(&transfer_only).is_ok());
+
+        transfer_only.source_transfer_ids.push(Uuid::new_v4());
+        assert!(validate(&transfer_only).is_ok());
+
+        transfer_only.source_transfer_ids.clear();
+        transfer_only.source_relationship_ids.clear();
+        assert!(validate(&transfer_only).is_err());
     }
 }

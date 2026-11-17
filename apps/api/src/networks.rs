@@ -191,6 +191,20 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             sync_provider: None,
         },
         NetworkInfo {
+            id: "cardano".into(),
+            name: "Cardano".into(),
+            family: NetworkFamily::Utxo,
+            chain_id: None,
+            native_asset: "ADA".into(),
+            explorer_url: Some("https://cardanoscan.io/".into()),
+            history_sync_available: false,
+            requires_api_key: true,
+            requires_paid_tier: false,
+            history_coverage: Some(vec!["cardano-utxo"]),
+            api_base_url: None,
+            sync_provider: None,
+        },
+        NetworkInfo {
             id: "solana".into(),
             name: "Solana".into(),
             family: NetworkFamily::Solana,
@@ -331,6 +345,9 @@ pub(crate) async fn list(
     if let Some(ton) = networks.iter_mut().find(|network| network.id == "ton") {
         ton.history_sync_available = state.ton_center.is_configured();
     }
+    if let Some(cardano) = networks.iter_mut().find(|network| network.id == "cardano") {
+        cardano.history_sync_available = state.cardano.is_configured();
+    }
     let history_sync_available = networks
         .iter()
         .any(|network| network.history_sync_available);
@@ -400,7 +417,7 @@ mod tests {
         }"#;
 
         let networks = parse_blockscout_config(config, false).unwrap();
-        assert_eq!(networks.len(), 9); // Каталог включает восемь встроенных сетей.
+        assert_eq!(networks.len(), 10);
         let ethereum = networks
             .iter()
             .find(|network| network.chain_id == Some(1))
@@ -417,6 +434,12 @@ mod tests {
         let ton = networks.iter().find(|network| network.id == "ton").unwrap();
         assert_eq!(ton.family, NetworkFamily::Ton);
         assert_eq!(ton.history_coverage, Some(vec!["ton-native", "ton-jetton"]));
+        let cardano = networks
+            .iter()
+            .find(|network| network.id == "cardano")
+            .unwrap();
+        assert_eq!(cardano.family, NetworkFamily::Utxo);
+        assert_eq!(cardano.history_coverage, Some(vec!["cardano-utxo"]));
     }
 
     #[test]
