@@ -31,5 +31,12 @@ describe("formatAssetAmount", () => {
         "123456789",
       ),
     ).toBe("123,456,789 raw units");
+
+    expect(
+      formatObservedAmount(
+        { network: "tron", transfer_kind: "trc20", token_decimals: null },
+        "123456789",
+      ),
+    ).toBe("123,456,789 raw units");
   });
 });

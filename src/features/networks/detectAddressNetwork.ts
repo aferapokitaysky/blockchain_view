@@ -1,5 +1,11 @@
 export type SupportedNetwork =
-  "bitcoin" | "solana" | "ethereum" | "base" | "arbitrum" | `eip155:${number}`;
+  | "bitcoin"
+  | "tron"
+  | "solana"
+  | "ethereum"
+  | "base"
+  | "arbitrum"
+  | `eip155:${number}`;
 
 export type AddressDetection =
   | { status: "empty"; message: string }
@@ -13,7 +19,7 @@ export type AddressDetection =
     }
   | {
       status: "ambiguous";
-      family: "EVM" | "Solana-compatible";
+      family: "EVM" | "Solana-compatible" | "Tron-compatible";
       message: string;
     };
 
@@ -67,19 +73,21 @@ async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
   );
 }
 
-async function isValidBase58CheckAddress(address: string): Promise<boolean> {
+async function base58CheckVersion(address: string): Promise<number | null> {
   const decoded = decodeBase58(address);
   if (
     !decoded ||
     decoded.length !== 25 ||
-    (decoded[0] !== 0x00 && decoded[0] !== 0x05)
+    ![0x00, 0x05, 0x41].includes(decoded[0])
   )
-    return false;
+    return null;
 
   const payload = decoded.slice(0, 21);
   const firstHash = await sha256(payload);
   const secondHash = await sha256(firstHash);
-  return decoded.slice(21).every((byte, index) => byte === secondHash[index]);
+  return decoded.slice(21).every((byte, index) => byte === secondHash[index])
+    ? decoded[0]
+    : null;
 }
 
 function polymod(values: number[]): bigint {
@@ -198,7 +206,8 @@ export async function detectAddressNetwork(
   }
 
   if (/^[13]/.test(address)) {
-    if (await isValidBase58CheckAddress(address)) {
+    const version = await base58CheckVersion(address);
+    if (version === 0x00 || version === 0x05) {
       return {
         status: "detected",
         network: "bitcoin",
@@ -206,6 +215,16 @@ export async function detectAddressNetwork(
         message: "Bitcoin mainnet address verified by format and checksum.",
       };
     }
+  }
+
+  const tronVersion = await base58CheckVersion(address);
+  if (tronVersion === 0x41) {
+    return {
+      status: "ambiguous",
+      family: "Tron-compatible",
+      message:
+        "This address has a valid TRON Base58Check format. Confirm TRON explicitly; address format alone does not prove network ownership.",
+    };
   }
 
   if (decodeBase58(address)?.length === 32) {

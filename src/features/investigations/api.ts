@@ -54,7 +54,9 @@ export type ObservedTransfer = {
     | "evm_internal"
     | "erc20"
     | "solana_native"
-    | "solana_spl";
+    | "solana_spl"
+    | "tron_native"
+    | "trc20";
   token_decimals?: number | null;
   token_contract_address?: string | null;
   from_address?: string | null;

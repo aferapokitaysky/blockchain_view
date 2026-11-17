@@ -57,6 +57,31 @@ describe("network catalog helpers", () => {
     ).toThrow("contains no supported networks");
   });
 
+  it("accepts TRON only with its dedicated family and explicit history capabilities", () => {
+    const catalog = parseNetworkCatalog({
+      history_sync_available: true,
+      networks: [
+        {
+          id: "tron",
+          name: "TRON",
+          family: "tron",
+          chain_id: null,
+          native_asset: "TRX",
+          explorer_url: "https://tronscan.org/",
+          history_sync_available: true,
+          history_coverage: ["native-trx", "trc20"],
+        },
+      ],
+    });
+
+    expect(catalog.networks[0]).toMatchObject({
+      id: "tron",
+      family: "tron",
+      chain_id: null,
+      history_coverage: ["native-trx", "trc20"],
+    });
+  });
+
   it("resolves catalog labels and preserves an unknown id as a visible fallback", () => {
     const networks = [
       ...LEGACY_NETWORKS,
