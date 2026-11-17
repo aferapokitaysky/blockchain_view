@@ -35,6 +35,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .unwrap_or_else(|_| "https://blockstream.info/api".into());
     let solana_rpc_url =
         std::env::var("SOLANA_RPC_URL").unwrap_or_else(|_| "https://api.mainnet.solana.com".into());
+    let xrpl_rpc_url =
+        std::env::var("XRPL_RPC_URL").unwrap_or_else(|_| "https://s2.ripple.com:51234/".into());
     let blockscout = BlockscoutClient::from_env(http_client.clone())?;
     let tron_grid = TronGridClient::from_env(http_client.clone())?;
     let state = HealthState {
@@ -43,6 +45,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         http_client,
         bitcoin_esplora_url,
         solana_rpc_url,
+        xrpl_rpc_url,
         blockscout,
         tron_grid,
     };

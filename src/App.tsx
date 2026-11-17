@@ -217,6 +217,8 @@ const networkMeta: Record<string, { color: string }> = {
   solana: { color: "#a98cff" },
   TRON: { color: "#ff5964" },
   tron: { color: "#ff5964" },
+  "XRP Ledger": { color: "#20a8d8" },
+  xrpl: { color: "#20a8d8" },
 };
 
 function networkColor(network: string): string {
@@ -287,6 +289,16 @@ function NetworkShape({ network }: { network: Network }) {
           <circle cx="4" cy="4.5" r="1.1" fill="currentColor" stroke="none" />
           <circle cx="20" cy="8" r="1.1" fill="currentColor" stroke="none" />
           <circle cx="12" cy="20" r="1.1" fill="currentColor" stroke="none" />
+        </>
+      )}
+      {(normalizedNetwork === "xrpl" || normalizedNetwork === "xrp ledger") && (
+        <>
+          <path d="M4 6h4.2c2.2 0 3.2 1.1 3.8 2.1l.1.2c.6 1 1.3 1.7 2.7 1.7h5.2" />
+          <path d="M4 18h4.2c2.2 0 3.2-1.1 3.8-2.1l.1-.2c.6-1 1.3-1.7 2.7-1.7h5.2" />
+          <circle cx="4" cy="6" r="1.2" fill="currentColor" />
+          <circle cx="20" cy="10" r="1.2" fill="currentColor" />
+          <circle cx="4" cy="18" r="1.2" fill="currentColor" />
+          <circle cx="20" cy="14" r="1.2" fill="currentColor" />
         </>
       )}
       {!networkMeta[network] && (

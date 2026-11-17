@@ -132,7 +132,36 @@ fn normalize_catalogued_address(
             normalize_tron_address(value)
         }
         crate::networks::NetworkFamily::Tron => Err(ApiError::UnsupportedNetwork),
+        crate::networks::NetworkFamily::Xrpl if network.id == "xrpl" => {
+            normalize_xrpl_address(value)
+        }
+        crate::networks::NetworkFamily::Xrpl => Err(ApiError::UnsupportedNetwork),
     }
+}
+
+pub(crate) fn normalize_xrpl_address(value: &str) -> Result<String, ApiError> {
+    let address = value.trim();
+    if address.starts_with('X') {
+        return Err(ApiError::Validation(
+            "X-address не поддерживается; используйте classic-адрес XRP Ledger",
+        ));
+    }
+    let payload = bs58::decode(address)
+        .with_alphabet(bs58::Alphabet::RIPPLE)
+        .with_check(Some(0))
+        .into_vec()
+        .map_err(|_| ApiError::Validation("Неверный classic-адрес XRP Ledger"))?;
+    if payload.len() != 21
+        || payload[0] != 0
+        || bs58::encode(&payload)
+            .with_alphabet(bs58::Alphabet::RIPPLE)
+            .with_check()
+            .into_string()
+            != address
+    {
+        return Err(ApiError::Validation("Неверный classic-адрес XRP Ledger"));
+    }
+    Ok(address.to_owned())
 }
 
 pub(crate) fn normalize_solana_address(value: &str) -> Result<String, ApiError> {
@@ -205,6 +234,7 @@ async fn ensure_investigation(state: &ApiState, id: Uuid) -> Result<(), ApiError
 mod tests {
     use super::{
         Network, normalize_catalogued_address, normalize_solana_address, normalize_tron_address,
+        normalize_xrpl_address,
     };
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
@@ -267,6 +297,14 @@ mod tests {
         );
         assert!(normalize_tron_address("T1111111111111111111111111111111111").is_err());
         assert!(normalize_tron_address("00ce8a0cf0c16d48bcf22825f6053248df653c89ca").is_err());
+    }
+
+    #[test]
+    fn validates_xrpl_classic_address_checksum_and_version() {
+        let address = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh";
+        assert_eq!(normalize_xrpl_address(address).unwrap(), address);
+        assert!(normalize_xrpl_address("rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTi").is_err());
+        assert!(normalize_xrpl_address("X7EVg4kB2e7S").is_err());
     }
 
     #[test]

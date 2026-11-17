@@ -17,6 +17,7 @@ pub struct HealthState {
     pub http_client: reqwest::Client,
     pub bitcoin_esplora_url: String,
     pub solana_rpc_url: String,
+    pub xrpl_rpc_url: String,
     pub blockscout: BlockscoutClient,
     pub tron_grid: TronGridClient,
 }
@@ -32,6 +33,7 @@ pub(crate) fn unavailable_state() -> HealthState {
         http_client: reqwest::Client::new(),
         bitcoin_esplora_url: "http://127.0.0.1:1/api".into(),
         solana_rpc_url: "http://127.0.0.1:1".into(),
+        xrpl_rpc_url: "http://127.0.0.1:1".into(),
         blockscout: BlockscoutClient::new("http://127.0.0.1:1", None, reqwest::Client::new())
             .expect("тестовая конфигурация Blockscout должна разбираться"),
         tron_grid: TronGridClient::new("http://127.0.0.1:1", None, reqwest::Client::new())

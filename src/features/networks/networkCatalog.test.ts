@@ -73,13 +73,37 @@ describe("network catalog helpers", () => {
         },
       ],
     });
-
     expect(catalog.networks[0]).toMatchObject({
       id: "tron",
       family: "tron",
       chain_id: null,
       history_coverage: ["native-trx", "trc20"],
     });
+  });
+
+  it("accepts XRPL only as its dedicated family without an EVM chain id", () => {
+    const catalog = parseNetworkCatalog({
+      history_sync_available: true,
+      networks: [
+        {
+          id: "xrpl",
+          name: "XRP Ledger",
+          family: "xrpl",
+          chain_id: null,
+          native_asset: "XRP",
+          explorer_url: "https://livenet.xrpl.org/",
+          history_coverage: ["xrp-direct-payment"],
+        },
+      ],
+    });
+    expect(catalog.networks).toMatchObject([
+      {
+        id: "xrpl",
+        family: "xrpl",
+        chain_id: null,
+        history_coverage: ["xrp-direct-payment"],
+      },
+    ]);
   });
 
   it("resolves catalog labels and preserves an unknown id as a visible fallback", () => {

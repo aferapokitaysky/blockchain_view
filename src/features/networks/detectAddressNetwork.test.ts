@@ -33,8 +33,24 @@ describe("detectAddressNetwork", () => {
       message: expect.stringContaining("Confirm TRON explicitly"),
     });
     await expect(
-      detectAddressNetwork("TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJN"),
+      detectAddressNetwork("TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSujN"),
     ).resolves.not.toMatchObject({ network: "tron" });
+  });
+
+  it("detects an XRP Ledger classic address by its checksum", async () => {
+    await expect(
+      detectAddressNetwork("rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"),
+    ).resolves.toMatchObject({ status: "detected", network: "xrpl" });
+    await expect(
+      detectAddressNetwork("rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTi"),
+    ).resolves.toMatchObject({ status: "invalid" });
+  });
+
+  it("explains that X-addresses are not supported", async () => {
+    await expect(detectAddressNetwork("X7EVg4kB2e7S")).resolves.toMatchObject({
+      status: "unsupported",
+      message: expect.stringContaining("classic XRP Ledger address"),
+    });
   });
 
   it("validates a Bitcoin Bech32 mainnet address", async () => {
