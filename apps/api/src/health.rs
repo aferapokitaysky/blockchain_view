@@ -7,6 +7,7 @@ use sqlx::PgPool;
 use tokio::time::timeout;
 use tracing::warn;
 
+use crate::cardano_sync::CardanoClient;
 use crate::etherscan_sync::EtherscanClient;
 use crate::evm_sync::BlockscoutClient;
 use crate::ton_sync::TonCenterClient;
@@ -24,6 +25,7 @@ pub struct HealthState {
     pub etherscan: EtherscanClient,
     pub tron_grid: TronGridClient,
     pub ton_center: TonCenterClient,
+    pub cardano: CardanoClient,
 }
 
 #[cfg(test)]
@@ -46,6 +48,8 @@ pub(crate) fn unavailable_state() -> HealthState {
             .expect("тестовая конфигурация TronGrid должна разбираться"),
         ton_center: TonCenterClient::new("http://127.0.0.1:1", None, reqwest::Client::new())
             .expect("тестовая конфигурация TON Center должна разбираться"),
+        cardano: CardanoClient::new(None, reqwest::Client::new(), None)
+            .expect("тестовая конфигурация Cardano должна разбираться"),
     }
 }
 

@@ -64,13 +64,6 @@ CREATE TABLE observed_relationships (
 CREATE INDEX observed_relationships_address_time_idx
     ON observed_relationships (tracked_address_id, block_time DESC NULLS LAST, observed_at DESC);
 
-CREATE TABLE cardano_asset_metadata (
-    asset_id TEXT PRIMARY KEY CHECK (asset_id ~ '^[a-f0-9]{56}[a-f0-9]{0,64}$'),
-    asset_name TEXT,
-    decimals SMALLINT CHECK (decimals BETWEEN 0 AND 255),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 ALTER TABLE investigation_graph_snapshots
     ADD COLUMN source_relationship_ids UUID[] NOT NULL DEFAULT '{}';
 ALTER TABLE investigation_graph_snapshots

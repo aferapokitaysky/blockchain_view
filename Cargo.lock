@@ -2307,6 +2307,7 @@ dependencies = [
  "chrono",
  "crc",
  "dotenvy",
+ "hex",
  "pallas-addresses",
  "quick-xml",
  "redis",
