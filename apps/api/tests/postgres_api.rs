@@ -172,10 +172,16 @@ async fn xrpl_sync_persists_rpc_amount_strings_as_numeric(pool: PgPool) {
 
     let mut state = test_state(pool.clone());
     state.xrpl_rpc_url = provider_url;
-    let result = tracefold_api::xrpl_sync::sync_tracked_address(&state, address_id, address)
-        .await
-        .expect("XRPL синхронизация должна сохраниться");
-    assert_eq!(result.saved, 1);
+    let response = send(
+        state,
+        Method::POST,
+        &format!("/api/v1/investigations/{investigation_id}/addresses/{address_id}/sync"),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let sync_result: serde_json::Value = response_json(response).await;
+    assert_eq!(sync_result["saved"], 1);
 
     let amounts = sqlx::query_as::<_, (String, String, String)>(
         "SELECT received_amount::text, spent_amount::text, transaction_hash FROM observed_transfers WHERE tracked_address_id = $1",
