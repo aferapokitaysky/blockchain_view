@@ -101,6 +101,42 @@ describe("derived transaction behavior signals", () => {
     );
   });
 
+  it("preserves case-sensitive Base58 counterparties when deriving fan-out", () => {
+    const signals = deriveBehaviorSignals(
+      [
+        "AbcDEF123456789",
+        "abcDEF123456789",
+        "SolanaCounterpartyA",
+        "SolanaCounterpartyB",
+      ].map((address, index) =>
+        transfer({
+          id: `solana-counterparty-${index}`,
+          network: "solana",
+          to_address: address,
+        }),
+      ),
+    );
+
+    expect(signals).toMatchObject([
+      {
+        title: "Observed fan-out pattern",
+        severity: "medium",
+      },
+    ]);
+    expect(signals[0].detail).toContain("4 distinct outbound counterparties");
+  });
+
+  it("treats EVM counterparties that differ only by case as one address", () => {
+    const signals = deriveBehaviorSignals([
+      transfer({ id: "evm-1", to_address: "0xABCDEF0123456789" }),
+      transfer({ id: "evm-2", to_address: "0xabcdef0123456789" }),
+      transfer({ id: "evm-3", to_address: "0x0000000000000001" }),
+      transfer({ id: "evm-4", to_address: "0x0000000000000002" }),
+    ]);
+
+    expect(signals).toEqual([]);
+  });
+
   it("requires four distinct counterparties and ignores unconfirmed or malformed observations", () => {
     const signals = deriveBehaviorSignals([
       transfer({ id: "one", to_address: "0xa" }),
@@ -275,6 +311,76 @@ describe("derived transaction behavior signals", () => {
     ]);
 
     expect(signals.some(({ title }) => title.includes("rapid"))).toBe(false);
+  });
+
+  it("preserves case-sensitive Solana signatures when finding rapid pairs", () => {
+    const solanaTransfer = (
+      id: string,
+      signature: string,
+      direction: "inbound" | "outbound",
+      amount: string,
+      block_time: string,
+    ) =>
+      transfer({
+        id,
+        network: "solana",
+        transaction_hash: signature,
+        transfer_kind: "solana_native",
+        asset: "SOL",
+        direction,
+        received_amount: direction === "inbound" ? amount : "0",
+        spent_amount: direction === "outbound" ? amount : "0",
+        block_time,
+      });
+    const signals = deriveBehaviorSignals([
+      solanaTransfer(
+        "in-a",
+        "CaseIn",
+        "inbound",
+        "100",
+        "2026-11-16T12:00:00Z",
+      ),
+      solanaTransfer(
+        "in-b",
+        "casein",
+        "inbound",
+        "100",
+        "2026-11-16T12:01:00Z",
+      ),
+      solanaTransfer(
+        "out-a",
+        "OutputA",
+        "outbound",
+        "90",
+        "2026-11-16T12:02:00Z",
+      ),
+      solanaTransfer(
+        "out-b",
+        "OutputB",
+        "outbound",
+        "90",
+        "2026-11-16T12:03:00Z",
+      ),
+      solanaTransfer(
+        "in-c",
+        "PairCase",
+        "inbound",
+        "100",
+        "2026-11-16T13:00:00Z",
+      ),
+      solanaTransfer(
+        "out-c",
+        "paircase",
+        "outbound",
+        "90",
+        "2026-11-16T13:01:00Z",
+      ),
+    ]);
+    const rapidTurnover = signals.find(({ title }) => title.includes("rapid"));
+
+    expect(rapidTurnover?.detail).toContain("3 non-overlapping");
+    expect(rapidTurnover?.detail).toContain("PairCase");
+    expect(rapidTurnover?.detail).toContain("paircase");
   });
 
   it("requires inbound before outbound within the inclusive ten-minute window", () => {

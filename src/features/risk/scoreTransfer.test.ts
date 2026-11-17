@@ -21,7 +21,7 @@ describe("transfer risk assessment", () => {
     expect(scoreTransfer([])).toMatchObject({
       score: 0,
       level: "unknown",
-      modelVersion: "0.1.0",
+      modelVersion: "0.2.0",
     });
   });
 

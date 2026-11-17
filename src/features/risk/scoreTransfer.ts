@@ -4,6 +4,7 @@ import type {
   StoredRiskSignal,
 } from "../investigations/api";
 import { isEvmNetworkId } from "../networks/networkCatalog";
+import type { BehaviorRiskSignal } from "./behaviorSignals";
 
 export type TransferRiskEvidence = {
   id: string;
@@ -28,7 +29,7 @@ export type TransferRiskAssessment = {
   disclaimer: string;
 };
 
-export const TRANSFER_RISK_MODEL_VERSION = "0.1.0";
+export const TRANSFER_RISK_MODEL_VERSION = "0.2.0";
 
 const severityPoints: Record<TransferRiskEvidence["severity"], number> = {
   critical: 80,
@@ -63,6 +64,7 @@ export function collectTransferRiskEvidence(
   transfer: ObservedTransfer,
   analystSignals: StoredRiskSignal[],
   screening: AddressScreeningResult | null,
+  behaviorSignals: BehaviorRiskSignal[] = [],
 ): TransferRiskEvidence[] {
   const transactionHash = normalizeTransactionHash(
     transfer.network,
@@ -97,13 +99,25 @@ export function collectTransferRiskEvidence(
     ];
   });
 
+  const behaviorEvidence = behaviorSignals
+    .filter(({ transferIds }) => transferIds.includes(transfer.id))
+    .map((signal) => ({
+      id: `${signal.id}:${transfer.id}`,
+      title: signal.title,
+      severity: signal.severity,
+      scope: "behavioral" as const,
+      hops: 0,
+      source: signal.source,
+      reference: signal.sourceReference,
+    }));
+
   if (
     !screening ||
     screening.status !== "exact_match" ||
     !screening.source ||
     screening.network.toLowerCase() !== transfer.network.toLowerCase()
   ) {
-    return analystEvidence;
+    return [...analystEvidence, ...behaviorEvidence];
   }
 
   const participatingAddresses = new Set(
@@ -129,7 +143,7 @@ export function collectTransferRiskEvidence(
       reference: null,
     }));
 
-  return [...analystEvidence, ...screeningEvidence];
+  return [...analystEvidence, ...behaviorEvidence, ...screeningEvidence];
 }
 
 function evidenceFactor(evidence: TransferRiskEvidence): number {

@@ -1,5 +1,6 @@
 import type { ObservedTransfer } from "../investigations/api";
 import { formatObservedAmount } from "../investigations/formatAssetAmount";
+import { isEvmNetworkId } from "../networks/networkCatalog";
 import type { RiskSignal } from "./scoreWallet";
 
 const HOURS_24_MS = 24 * 60 * 60 * 1_000;
@@ -29,6 +30,41 @@ type RapidTurnoverPair = {
   outbound: AmountTransfer;
 };
 
+const HEX_HASH_NETWORKS = new Set([
+  "bitcoin",
+  "cardano",
+  "tron",
+  "xrpl",
+  "aptos",
+]);
+
+function normalizeCounterparty(network: string, address: string): string {
+  const normalizedNetwork = network.toLowerCase();
+  const isHexAddress = /^0x[0-9a-f]+$/i.test(address);
+  const isBitcoinBech32 =
+    normalizedNetwork === "bitcoin" && /^(bc1|tb1|bcrt1)/i.test(address);
+  if (isEvmNetworkId(normalizedNetwork) || isHexAddress || isBitcoinBech32) {
+    return address.toLowerCase();
+  }
+  return address;
+}
+
+function normalizeTransactionHash(network: string, hash: string): string {
+  const normalizedNetwork = network.toLowerCase();
+  const isHexHash = /^(?:0x)?[0-9a-f]{64}$/i.test(hash);
+  if (
+    isEvmNetworkId(normalizedNetwork) ||
+    (HEX_HASH_NETWORKS.has(normalizedNetwork) && isHexHash)
+  ) {
+    return hash.toLowerCase();
+  }
+  return hash;
+}
+
+export type BehaviorRiskSignal = RiskSignal & {
+  transferIds: string[];
+};
+
 function getTimedTransfers(
   transfers: ObservedTransfer[],
   direction: "inbound" | "outbound",
@@ -41,7 +77,13 @@ function getTimedTransfers(
     const timestamp = Date.parse(transfer.block_time ?? transfer.observed_at);
     if (!counterparty || !Number.isFinite(timestamp)) return [];
 
-    return [{ transfer, timestamp, counterparty: counterparty.toLowerCase() }];
+    return [
+      {
+        transfer,
+        timestamp,
+        counterparty: normalizeCounterparty(transfer.network, counterparty),
+      },
+    ];
   });
 }
 
@@ -83,7 +125,7 @@ function findPeakCounterpartyWindow(
 function buildFanSignal(
   direction: "inbound" | "outbound",
   transfers: TimedTransfer[],
-): RiskSignal | null {
+): BehaviorRiskSignal | null {
   const window = findPeakCounterpartyWindow(transfers);
   const counterparties = new Set(
     window.map(({ counterparty }) => counterparty),
@@ -114,6 +156,7 @@ function buildFanSignal(
     source: `Saved chain observations · ${[...new Set(window.map(({ transfer }) => transfer.provider))].join(", ")}`,
     sourceReference: null,
     observedAt: new Date(latest.timestamp).toISOString(),
+    transferIds: [...new Set(window.map(({ transfer }) => transfer.id))],
   };
 }
 
@@ -132,7 +175,7 @@ function getRapidAmount(transfer: ObservedTransfer): bigint | null {
 function rapidEventKey(transfer: ObservedTransfer): string {
   return [
     transfer.network.toLowerCase(),
-    transfer.transaction_hash.toLowerCase(),
+    normalizeTransactionHash(transfer.network, transfer.transaction_hash),
     transfer.transfer_kind ?? "",
     transfer.event_index ?? -1,
     transfer.direction,
@@ -226,8 +269,14 @@ function pairRapidTurnoverEvents(
             elapsed >= 0 &&
             elapsed <= RAPID_TURNOVER_WINDOW_MS &&
             incoming.eventKey !== outgoing.eventKey &&
-            incoming.transfer.transaction_hash.toLowerCase() !==
-              outgoing.transfer.transaction_hash.toLowerCase() &&
+            normalizeTransactionHash(
+              incoming.transfer.network,
+              incoming.transfer.transaction_hash,
+            ) !==
+              normalizeTransactionHash(
+                outgoing.transfer.network,
+                outgoing.transfer.transaction_hash,
+              ) &&
             amountsAreSimilar(incoming.amount, outgoing.amount)
           );
         })
@@ -271,7 +320,7 @@ function formatRapidAmount(event: AmountTransfer, asset: string): string {
 
 function buildRapidTurnoverSignal(
   transfers: ObservedTransfer[],
-): RiskSignal | null {
+): BehaviorRiskSignal | null {
   const pairs = pairRapidTurnoverEvents(transfers);
   const pairsByGroup = new Map<string, RapidTurnoverPair[]>();
   for (const pair of pairs) {
@@ -292,6 +341,10 @@ function buildRapidTurnoverSignal(
   const evidence = repeatedPairs
     .slice(0, RAPID_TURNOVER_MAX_EVIDENCE_PAIRS)
     .map(formatRapidPair);
+  const evidencedPairs = repeatedPairs.slice(
+    0,
+    RAPID_TURNOVER_MAX_EVIDENCE_PAIRS,
+  );
   const providers = [
     ...new Set(
       repeatedPairs.flatMap(({ inbound, outbound }) => [
@@ -313,13 +366,21 @@ function buildRapidTurnoverSignal(
     source: `Saved chain observations · ${providers.join(", ")}`,
     sourceReference: null,
     observedAt: new Date(latest.timestamp).toISOString(),
+    transferIds: [
+      ...new Set(
+        evidencedPairs.flatMap(({ inbound, outbound }) => [
+          inbound.transfer.id,
+          outbound.transfer.id,
+        ]),
+      ),
+    ],
   };
 }
 
 /** Derives conservative fan-in/fan-out signals from confirmed saved observations. */
 export function deriveBehaviorSignals(
   transfers: ObservedTransfer[],
-): RiskSignal[] {
+): BehaviorRiskSignal[] {
   const outbound = buildFanSignal(
     "outbound",
     getTimedTransfers(transfers, "outbound"),
@@ -330,6 +391,6 @@ export function deriveBehaviorSignals(
   );
   const rapidTurnover = buildRapidTurnoverSignal(transfers);
   return [outbound, inbound, rapidTurnover].filter(
-    (signal): signal is RiskSignal => signal !== null,
+    (signal): signal is BehaviorRiskSignal => signal !== null,
   );
 }

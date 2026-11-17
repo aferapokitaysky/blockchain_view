@@ -222,6 +222,118 @@ describe("transaction feed", () => {
     expect(item.riskAssessment).toBeNull();
   });
 
+  it("links fan-out evidence only to the confirmed transfers in that pattern", () => {
+    const transfers = ["0xa", "0xb", "0xc", "0xd"].map((counterparty, index) =>
+      transfer({
+        id: `fan-out-${index}`,
+        transaction_hash: `0xfan${index}`,
+        to_address: counterparty,
+      }),
+    );
+    const otherWallet = { ...address, id: "tracked-2" };
+    const items = buildTransactionFeed(
+      [
+        history(transfers),
+        history([transfer({ id: "other-wallet" })], otherWallet),
+      ],
+      {},
+      riskContext([]),
+    );
+
+    expect(items.slice(0, 4)).toHaveLength(4);
+    for (const item of items.slice(0, 4)) {
+      expect(item.riskAssessment).toMatchObject({
+        score: 22,
+        level: "guarded",
+        modelVersion: "0.2.0",
+      });
+      expect(item.riskAssessment?.contributions[0]).toMatchObject({
+        factor: 0.9,
+        evidence: {
+          scope: "behavioral",
+          title: "Observed fan-out pattern",
+        },
+      });
+    }
+    expect(
+      items.find(({ trackedAddressId }) => trackedAddressId === "tracked-2")
+        ?.riskAssessment,
+    ).toBeNull();
+  });
+
+  it("links rapid-turnover evidence to displayed pair legs, not nearby unrelated transfers", () => {
+    const transfers = [
+      transfer({
+        id: "pair-in-1",
+        transaction_hash: "0xpair-in-1",
+        direction: "inbound",
+        received_amount: "100",
+        spent_amount: "0",
+        from_address: "0xsource-a",
+        to_address: address.address,
+        block_time: "2026-11-16T10:00:00Z",
+      }),
+      transfer({
+        id: "pair-out-1",
+        transaction_hash: "0xpair-out-1",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "90",
+        from_address: address.address,
+        to_address: "0xdestination-a",
+        block_time: "2026-11-16T10:05:00Z",
+      }),
+      transfer({
+        id: "pair-in-2",
+        transaction_hash: "0xpair-in-2",
+        direction: "inbound",
+        received_amount: "200",
+        spent_amount: "0",
+        from_address: "0xsource-b",
+        to_address: address.address,
+        block_time: "2026-11-16T11:00:00Z",
+      }),
+      transfer({
+        id: "pair-out-2",
+        transaction_hash: "0xpair-out-2",
+        direction: "outbound",
+        received_amount: "0",
+        spent_amount: "180",
+        from_address: address.address,
+        to_address: "0xdestination-b",
+        block_time: "2026-11-16T11:05:00Z",
+      }),
+      transfer({
+        id: "unpaired-outbound",
+        transaction_hash: "0xunpaired-outbound",
+        received_amount: "0",
+        spent_amount: "999",
+        block_time: "2026-11-16T11:06:00Z",
+      }),
+    ];
+    const items = buildTransactionFeed(
+      [history(transfers)],
+      {},
+      riskContext([]),
+    );
+
+    for (const id of ["pair-in-1", "pair-out-1", "pair-in-2", "pair-out-2"]) {
+      const item = items.find((candidate) => candidate.id.startsWith(id));
+      expect(item?.riskAssessment).toMatchObject({
+        score: 7,
+        level: "low",
+        modelVersion: "0.2.0",
+      });
+      expect(item?.riskAssessment?.contributions[0].evidence.title).toBe(
+        "Repeated rapid inbound/outbound sequence",
+      );
+    }
+    expect(
+      items.find((item) => item.id.startsWith("unpaired-outbound"))
+        ?.riskAssessment,
+    ).toBeNull();
+  });
+
   it("preserves observed EVM endpoints, tracked wallet, and provider provenance", () => {
     const [item] = buildTransactionFeed([history([transfer()])]);
 
