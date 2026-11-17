@@ -45,6 +45,7 @@ services:
       ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY:-}
       ETHERSCAN_ENABLE_PAID_CHAINS: ${ETHERSCAN_ENABLE_PAID_CHAINS:-false}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet.solana.com}
+      SOLANA_HELIUS_API_KEY: ${SOLANA_HELIUS_API_KEY:-}
       TRONGRID_BASE_URL: ${TRONGRID_BASE_URL:-https://api.trongrid.io}
       TRONGRID_API_KEY: ${TRONGRID_API_KEY:-}
       XRPL_RPC_URL: ${XRPL_RPC_URL:-https://s2.ripple.com:51234/}
@@ -79,6 +80,7 @@ services:
       ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY:-}
       ETHERSCAN_ENABLE_PAID_CHAINS: ${ETHERSCAN_ENABLE_PAID_CHAINS:-false}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet.solana.com}
+      SOLANA_HELIUS_API_KEY: ${SOLANA_HELIUS_API_KEY:-}
       TRONGRID_BASE_URL: ${TRONGRID_BASE_URL:-https://api.trongrid.io}
       TRONGRID_API_KEY: ${TRONGRID_API_KEY:-}
       XRPL_RPC_URL: ${XRPL_RPC_URL:-https://s2.ripple.com:51234/}

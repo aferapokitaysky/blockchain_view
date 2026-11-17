@@ -37,6 +37,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .unwrap_or_else(|_| "https://blockstream.info/api".into());
     let solana_rpc_url =
         std::env::var("SOLANA_RPC_URL").unwrap_or_else(|_| "https://api.mainnet.solana.com".into());
+    let solana_helius_api_key = std::env::var("SOLANA_HELIUS_API_KEY")
+        .ok()
+        .filter(|key| !key.trim().is_empty());
     let xrpl_rpc_url =
         std::env::var("XRPL_RPC_URL").unwrap_or_else(|_| "https://s2.ripple.com:51234/".into());
     let blockscout = BlockscoutClient::from_env(http_client.clone())?;
@@ -52,6 +55,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         http_client,
         bitcoin_esplora_url,
         solana_rpc_url,
+        solana_helius_api_key,
         xrpl_rpc_url,
         blockscout,
         etherscan,

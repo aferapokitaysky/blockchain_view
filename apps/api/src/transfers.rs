@@ -130,6 +130,14 @@ pub(crate) async fn sync_tracked_address(
     }
 
     if address.network == "solana" {
+        if uses_helius(&state.solana_helius_api_key) {
+            return crate::solana_helius_sync::sync_tracked_address(
+                state,
+                address_id,
+                &address.address,
+            )
+            .await;
+        }
         return crate::solana_sync::sync_tracked_address(state, address_id, &address.address).await;
     }
     if address.network == "tron" {
@@ -198,6 +206,22 @@ pub(crate) async fn sync_tracked_address(
         may_have_more_history: transactions.may_have_more,
         observed_at,
     })
+}
+
+fn uses_helius(api_key: &Option<String>) -> bool {
+    api_key.as_deref().is_some_and(|key| !key.trim().is_empty())
+}
+
+#[cfg(test)]
+mod helius_selection_tests {
+    use super::uses_helius;
+
+    #[test]
+    fn keeps_generic_rpc_as_fallback_without_a_helius_key() {
+        assert!(!uses_helius(&None));
+        assert!(!uses_helius(&Some("  ".into())));
+        assert!(uses_helius(&Some("configured-key".into())));
+    }
 }
 
 fn provider_name(base_url: &str) -> String {
