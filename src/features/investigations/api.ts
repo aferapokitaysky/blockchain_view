@@ -56,7 +56,8 @@ export type ObservedTransfer = {
     | "solana_native"
     | "solana_spl"
     | "tron_native"
-    | "trc20";
+    | "trc20"
+    | "xrpl_native";
   token_decimals?: number | null;
   token_contract_address?: string | null;
   from_address?: string | null;

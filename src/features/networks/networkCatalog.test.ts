@@ -60,26 +60,27 @@ describe("network catalog helpers", () => {
   it("accepts TRON only with its dedicated family and explicit history capabilities", () => {
     const catalog = parseNetworkCatalog({
       history_sync_available: true,
-      networks: [
-        {
-          id: "tron",
-          name: "TRON",
-          family: "tron",
-          chain_id: null,
-          native_asset: "TRX",
-          explorer_url: "https://tronscan.org/",
-          history_sync_available: true,
-          history_coverage: ["native-trx", "trc20"],
-        },
-      ],
+      networks: [{
+        id: "tron", name: "TRON", family: "tron", chain_id: null,
+        native_asset: "TRX", explorer_url: "https://tronscan.org/",
+        history_sync_available: true, history_coverage: ["native-trx", "trc20"],
+      }],
     });
-
     expect(catalog.networks[0]).toMatchObject({
-      id: "tron",
-      family: "tron",
-      chain_id: null,
+      id: "tron", family: "tron", chain_id: null,
       history_coverage: ["native-trx", "trc20"],
     });
+  });
+
+  it("accepts XRPL only as its dedicated family without an EVM chain id", () => {
+    const catalog = parseNetworkCatalog({
+      history_sync_available: true,
+      networks: [{
+        id: "xrpl", name: "XRP Ledger", family: "xrpl", chain_id: null,
+        native_asset: "XRP", explorer_url: "https://livenet.xrpl.org/",
+      }],
+    });
+    expect(catalog.networks).toMatchObject([{ id: "xrpl", family: "xrpl", chain_id: null }]);
   });
 
   it("resolves catalog labels and preserves an unknown id as a visible fallback", () => {

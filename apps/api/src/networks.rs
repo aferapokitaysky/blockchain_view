@@ -15,6 +15,7 @@ pub enum NetworkFamily {
     Utxo,
     Solana,
     Tron,
+    Xrpl,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -192,6 +193,17 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             history_coverage: Some(vec!["native-trx", "trc20"]),
             api_base_url: None,
         },
+        NetworkInfo {
+            id: "xrpl".into(),
+            name: "XRP Ledger".into(),
+            family: NetworkFamily::Xrpl,
+            chain_id: None,
+            native_asset: "XRP".into(),
+            explorer_url: Some("https://livenet.xrpl.org/".into()),
+            history_sync_available: true,
+            history_coverage: None,
+            api_base_url: None,
+        },
     ];
     networks.sort_by_key(|network| network.name.to_lowercase());
     networks
@@ -365,6 +377,11 @@ mod tests {
             network.id == "solana"
                 && network.family == NetworkFamily::Solana
                 && network.history_sync_available
+        }));
+        assert!(fallback.iter().any(|network| {
+            network.id == "xrpl"
+                && network.family == NetworkFamily::Xrpl
+                && network.chain_id.is_none()
         }));
     }
 

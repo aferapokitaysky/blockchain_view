@@ -1,4 +1,4 @@
-export type NetworkFamily = "evm" | "utxo" | "solana" | "tron";
+export type NetworkFamily = "evm" | "utxo" | "solana" | "tron" | "xrpl";
 export type NetworkHistoryCapability = "native-trx" | "trc20";
 
 export type NetworkCatalogEntry = {
@@ -18,7 +18,7 @@ export type NetworkCatalog = {
 };
 
 const NETWORK_ID_PATTERN =
-  /^(bitcoin|ethereum|base|arbitrum|solana|tron|eip155:[1-9]\d*)$/;
+  /^(bitcoin|ethereum|base|arbitrum|solana|tron|xrpl|eip155:[1-9]\d*)$/;
 
 export function parseNetworkCatalog(value: unknown): NetworkCatalog {
   if (!value || typeof value !== "object" || !("networks" in value)) {
@@ -49,7 +49,8 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
       (entry.family !== "evm" &&
         entry.family !== "utxo" &&
         entry.family !== "solana" &&
-        entry.family !== "tron") ||
+        entry.family !== "tron" &&
+        entry.family !== "xrpl") ||
       !(
         entry.chain_id === null ||
         (typeof entry.chain_id === "number" &&
@@ -90,7 +91,9 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
       (entry.id === "solana" &&
         (entry.family !== "solana" || entry.chain_id !== null)) ||
       (entry.id === "tron" &&
-        (entry.family !== "tron" || entry.chain_id !== null))
+        (entry.family !== "tron" || entry.chain_id !== null)) ||
+      (entry.id === "xrpl" &&
+        (entry.family !== "xrpl" || entry.chain_id !== null))
     ) {
       return [];
     }
@@ -168,6 +171,14 @@ export const LEGACY_NETWORKS: NetworkCatalogEntry[] = [
     native_asset: "TRX",
     explorer_url: "https://tronscan.org/",
     history_coverage: ["native-trx", "trc20"],
+  },
+  {
+    id: "xrpl",
+    name: "XRP Ledger",
+    family: "xrpl",
+    chain_id: null,
+    native_asset: "XRP",
+    explorer_url: "https://livenet.xrpl.org/",
   },
 ];
 

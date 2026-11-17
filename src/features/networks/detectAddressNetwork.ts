@@ -2,6 +2,7 @@ export type SupportedNetwork =
   | "bitcoin"
   | "tron"
   | "solana"
+  | "xrpl"
   | "ethereum"
   | "base"
   | "arbitrum"
@@ -14,6 +15,12 @@ export type AddressDetection =
   | {
       status: "detected";
       network: "bitcoin";
+      confidence: "format-and-checksum";
+      message: string;
+    }
+  | {
+      status: "detected";
+      network: "xrpl";
       confidence: "format-and-checksum";
       message: string;
     }
@@ -88,6 +95,15 @@ async function base58CheckVersion(address: string): Promise<number | null> {
   return decoded.slice(21).every((byte, index) => byte === secondHash[index])
     ? decoded[0]
     : null;
+}
+
+async function isValidXrplClassicAddress(address: string): Promise<boolean> {
+  const decoded = decodeBase58(address);
+  if (!decoded || decoded.length !== 25 || decoded[0] !== 0) return false;
+  const payload = decoded.slice(0, 21);
+  const first = await sha256(payload);
+  const second = await sha256(first);
+  return decoded.slice(21).every((byte, index) => byte === second[index]);
 }
 
 function polymod(values: number[]): bigint {
@@ -187,6 +203,18 @@ export async function detectAddressNetwork(
     return {
       status: "unsupported",
       message: "Bitcoin testnet addresses are not supported yet.",
+    };
+  }
+
+  if (/^r/.test(address)) {
+    if (!(await isValidXrplClassicAddress(address))) {
+      return { status: "invalid", message: "Invalid XRP Ledger classic address or checksum." };
+    }
+    return {
+      status: "detected",
+      network: "xrpl",
+      confidence: "format-and-checksum",
+      message: "XRP Ledger classic address verified by format and checksum.",
     };
   }
 
