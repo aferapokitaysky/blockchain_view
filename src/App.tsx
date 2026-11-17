@@ -61,6 +61,7 @@ import {
   type WalletHistory,
 } from "./features/investigations/api";
 import { InvestigationManager } from "./features/investigations/InvestigationManager";
+import { WatchlistPage } from "./features/watchlist/WatchlistPage";
 import {
   readStoredInvestigationId,
   resolveActiveInvestigationId,
@@ -85,7 +86,7 @@ const TRANSACTIONS_PER_PAGE = 50;
 const PRIMARY_NAVIGATION = [
   { label: "Overview", Icon: Activity, available: true },
   { label: "Investigations", Icon: Crosshair, available: true },
-  { label: "Watchlist", Icon: Bell, available: false },
+  { label: "Watchlist", Icon: Bell, available: true },
   { label: "Entities", Icon: Wallet, available: false },
 ] as const;
 function safeExternalLink(reference: string | null): string | null {
@@ -916,15 +917,17 @@ function App() {
     }
   };
 
-  const syncSavedAddress = async () => {
-    if (!selectedTrackedAddress || isSyncing) return;
+  const syncSavedAddress = async (
+    address: TrackedAddress | undefined = selectedTrackedAddress,
+  ) => {
+    if (!address || isSyncing) return;
     setIsSyncing(true);
     setHistoryError("");
     try {
-      const result = await syncWalletHistory(selectedTrackedAddress);
+      const result = await syncWalletHistory(address);
       let records: ObservedTransfer[];
       try {
-        records = await listWalletHistory(selectedTrackedAddress);
+        records = await listWalletHistory(address);
       } catch {
         setHistoryError(
           "History synced, but saved records could not be loaded. Retry loading history.",
@@ -935,7 +938,7 @@ function App() {
       setActivityRefreshKey((revision) => revision + 1);
       try {
         await refreshInvestigationGraph(
-          selectedTrackedAddress.investigation_id,
+          address.investigation_id,
           trackedAddresses,
         );
       } catch {
@@ -945,7 +948,7 @@ function App() {
         ? " The provider page limit was reached; older history may be missing."
         : "";
       setNotice(
-        `Saved ${result.fetched} ${getNetworkName(selectedTrackedAddress.network, networkCatalog.networks)} observations from ${result.provider}.${coverage}`,
+        `Saved ${result.fetched} ${getNetworkName(address.network, networkCatalog.networks)} observations from ${result.provider}.${coverage}`,
       );
     } catch (error) {
       setHistoryError(
@@ -1073,6 +1076,24 @@ function App() {
     setWalletInvestigationId("");
     setTrackSource("manual");
     setShowAdd(true);
+  };
+
+  const selectWatchlistAddress = (addressId: string) => {
+    setSelectedAddressId(addressId);
+    setHistoryRecords(null);
+    setHistoryError("");
+    setScreeningResult(null);
+    setScreeningError("");
+  };
+
+  const openWatchlistAddress = (addressId: string) => {
+    selectWatchlistAddress(addressId);
+    setActiveTab("Overview");
+  };
+
+  const syncWatchlistAddress = (address: TrackedAddress) => {
+    selectWatchlistAddress(address.id);
+    void syncSavedAddress(address);
   };
 
   return (
@@ -1227,6 +1248,30 @@ function App() {
               onSelect={selectInvestigation}
               onCreate={handleCreateInvestigation}
               onRetry={() => void retryAddressLoad()}
+            />
+          </div>
+        ) : activeTab === "Watchlist" ? (
+          <div className="page-content">
+            <WatchlistPage
+              addresses={activeInvestigationAddresses}
+              histories={activeInvestigationData.histories}
+              networkNames={networkNames}
+              selectedAddressId={selectedAddressId}
+              historyStatus={activityStatus}
+              loading={addressesLoading}
+              syncing={isSyncing}
+              canSync={apiStatus === "online"}
+              error={addressesError || historyError || activityError}
+              investigationName={
+                investigations.find(({ id }) => id === activeInvestigationId)
+                  ?.name ?? ""
+              }
+              onSelectAddress={selectWatchlistAddress}
+              onOpenAddress={openWatchlistAddress}
+              onAddAddress={openAddWallet}
+              onSyncAddress={syncWatchlistAddress}
+              onRetry={() => void retryAddressLoad()}
+              onOpenInvestigations={() => setActiveTab("Investigations")}
             />
           </div>
         ) : (
