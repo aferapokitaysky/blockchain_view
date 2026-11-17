@@ -4,6 +4,7 @@ use axum::{Json, extract::State};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
+use crate::etherscan_sync::{EtherscanNetwork, SUPPORTED_NETWORKS};
 use crate::{ApiState, error::ApiError};
 
 pub(crate) const MAX_CATALOG_BYTES: usize = 2 * 1024 * 1024;
@@ -19,6 +20,12 @@ pub enum NetworkFamily {
     Ton,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum NetworkSyncProvider {
+    Blockscout,
+    EtherscanV2,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct NetworkInfo {
     pub id: String,
@@ -28,10 +35,14 @@ pub struct NetworkInfo {
     pub native_asset: String,
     pub explorer_url: Option<String>,
     pub history_sync_available: bool,
+    pub requires_api_key: bool,
+    pub requires_paid_tier: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub history_coverage: Option<Vec<&'static str>>,
     #[serde(skip)]
     pub(crate) api_base_url: Option<Url>,
+    #[serde(skip)]
+    pub(crate) sync_provider: Option<NetworkSyncProvider>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -132,7 +143,11 @@ pub(crate) fn parse_blockscout_config(
             native_asset: native_asset.to_owned(),
             explorer_url: chain_explorer_url,
             history_sync_available: api_base_url.is_some() || has_configured_universal_provider,
+            requires_api_key: false,
+            requires_paid_tier: false,
             history_coverage: None,
+            sync_provider: (api_base_url.is_some() || has_configured_universal_provider)
+                .then_some(NetworkSyncProvider::Blockscout),
             api_base_url,
         });
     }
@@ -169,8 +184,11 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             native_asset: "BTC".into(),
             explorer_url: Some("https://blockstream.info/".into()),
             history_sync_available: true,
+            requires_api_key: false,
+            requires_paid_tier: false,
             history_coverage: None,
             api_base_url: None,
+            sync_provider: None,
         },
         NetworkInfo {
             id: "solana".into(),
@@ -180,8 +198,11 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             native_asset: "SOL".into(),
             explorer_url: Some("https://explorer.solana.com/".into()),
             history_sync_available: true,
+            requires_api_key: false,
+            requires_paid_tier: false,
             history_coverage: None,
             api_base_url: None,
+            sync_provider: None,
         },
         NetworkInfo {
             id: "tron".into(),
@@ -191,8 +212,11 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             native_asset: "TRX".into(),
             explorer_url: Some("https://tronscan.org/".into()),
             history_sync_available: false,
+            requires_api_key: false,
+            requires_paid_tier: false,
             history_coverage: Some(vec!["native-trx", "trc20"]),
             api_base_url: None,
+            sync_provider: None,
         },
         NetworkInfo {
             id: "xrpl".into(),
@@ -202,8 +226,11 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             native_asset: "XRP".into(),
             explorer_url: Some("https://livenet.xrpl.org/".into()),
             history_sync_available: true,
+            requires_api_key: false,
+            requires_paid_tier: false,
             history_coverage: Some(vec!["xrp-direct-payment"]),
             api_base_url: None,
+            sync_provider: None,
         },
         NetworkInfo {
             id: "ton".into(),
@@ -213,8 +240,11 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             native_asset: "TON".into(),
             explorer_url: Some("https://tonviewer.com/".into()),
             history_sync_available: false,
+            requires_api_key: false,
+            requires_paid_tier: false,
             history_coverage: Some(vec!["ton-native", "ton-jetton"]),
             api_base_url: None,
+            sync_provider: None,
         },
     ];
     networks.sort_by_key(|network| network.name.to_lowercase());
@@ -231,7 +261,12 @@ fn static_evm(id: &str, name: &str, chain_id: u64, asset: &str, url: &str) -> Ne
         native_asset: asset.into(),
         explorer_url: Some(url.into()),
         history_sync_available: api_base_url.is_some(),
+        requires_api_key: false,
+        requires_paid_tier: false,
         history_coverage: None,
+        sync_provider: api_base_url
+            .as_ref()
+            .map(|_| NetworkSyncProvider::Blockscout),
         api_base_url,
     }
 }
@@ -285,7 +320,7 @@ fn valid_public_https_base_url(value: &str) -> Option<Url> {
 pub(crate) async fn list(
     State(state): State<ApiState>,
 ) -> Result<Json<NetworkCatalogResponse>, ApiError> {
-    let mut networks = state.blockscout.network_catalog().await;
+    let mut networks = provider_catalog(&state).await;
     if let Some(solana) = networks.iter_mut().find(|network| network.id == "solana") {
         solana.history_sync_available =
             crate::solana_sync::rpc_is_configured(&state.solana_rpc_url);
@@ -303,6 +338,48 @@ pub(crate) async fn list(
         history_sync_available,
         networks,
     }))
+}
+
+pub(crate) async fn provider_catalog(state: &ApiState) -> Vec<NetworkInfo> {
+    let mut networks = state.blockscout.network_catalog().await;
+    append_etherscan_networks(&mut networks, &state.etherscan);
+    networks
+}
+
+pub(crate) fn append_etherscan_networks(
+    networks: &mut Vec<NetworkInfo>,
+    provider: &crate::etherscan_sync::EtherscanClient,
+) {
+    for supported in SUPPORTED_NETWORKS {
+        if networks
+            .iter()
+            .any(|network| network.chain_id == Some(supported.chain_id))
+        {
+            continue;
+        }
+        networks.push(etherscan_network_info(*supported, provider));
+    }
+    networks.sort_by_key(|network| network.name.to_lowercase());
+}
+
+fn etherscan_network_info(
+    supported: EtherscanNetwork,
+    provider: &crate::etherscan_sync::EtherscanClient,
+) -> NetworkInfo {
+    NetworkInfo {
+        id: format!("eip155:{}", supported.chain_id),
+        name: supported.name.into(),
+        family: NetworkFamily::Evm,
+        chain_id: Some(supported.chain_id),
+        native_asset: supported.native_asset.into(),
+        explorer_url: Some(supported.explorer_url.into()),
+        history_sync_available: provider.is_network_available(supported),
+        requires_api_key: true,
+        requires_paid_tier: supported.tier == crate::etherscan_sync::EtherscanTier::Paid,
+        history_coverage: Some(vec!["evm-native", "evm-internal", "erc20"]),
+        api_base_url: None,
+        sync_provider: Some(NetworkSyncProvider::EtherscanV2),
+    }
 }
 
 #[cfg(test)]
@@ -401,6 +478,80 @@ mod tests {
                 && network.family == NetworkFamily::Xrpl
                 && network.chain_id.is_none()
         }));
+    }
+
+    #[test]
+    fn etherscan_catalog_adds_only_missing_chains_and_marks_key_and_tier_requirements() {
+        let mut networks = vec![super::static_evm(
+            "eip155:137",
+            "Polygon PoS",
+            137,
+            "POL",
+            "https://polygon.blockscout.com/",
+        )];
+        let no_key =
+            crate::etherscan_sync::EtherscanClient::new(None, false, reqwest::Client::new())
+                .unwrap();
+        super::append_etherscan_networks(&mut networks, &no_key);
+
+        let polygon_entries = networks
+            .iter()
+            .filter(|network| network.chain_id == Some(137))
+            .collect::<Vec<_>>();
+        assert_eq!(polygon_entries.len(), 1);
+        assert_eq!(
+            polygon_entries[0].sync_provider,
+            Some(super::NetworkSyncProvider::Blockscout)
+        );
+
+        let bnb = networks
+            .iter()
+            .find(|network| network.chain_id == Some(56))
+            .unwrap();
+        assert_eq!(bnb.id, "eip155:56");
+        assert!(bnb.requires_api_key);
+        assert!(bnb.requires_paid_tier);
+        assert!(!bnb.history_sync_available);
+        assert_eq!(
+            bnb.history_coverage,
+            Some(vec!["evm-native", "evm-internal", "erc20"])
+        );
+    }
+
+    #[test]
+    fn etherscan_tier_availability_requires_explicit_paid_plan_configuration() {
+        let provider = crate::etherscan_sync::EtherscanClient::new(
+            Some("test-key"),
+            false,
+            reqwest::Client::new(),
+        )
+        .unwrap();
+        let mut networks = Vec::new();
+        super::append_etherscan_networks(&mut networks, &provider);
+        let polygon = networks
+            .iter()
+            .find(|network| network.chain_id == Some(137))
+            .unwrap();
+        let bnb = networks
+            .iter()
+            .find(|network| network.chain_id == Some(56))
+            .unwrap();
+        assert!(polygon.history_sync_available);
+        assert!(!bnb.history_sync_available);
+
+        let paid_provider = crate::etherscan_sync::EtherscanClient::new(
+            Some("test-key"),
+            true,
+            reqwest::Client::new(),
+        )
+        .unwrap();
+        let mut paid_networks = Vec::new();
+        super::append_etherscan_networks(&mut paid_networks, &paid_provider);
+        let bnb = paid_networks
+            .iter()
+            .find(|network| network.chain_id == Some(56))
+            .unwrap();
+        assert!(bnb.history_sync_available);
     }
 
     #[tokio::test]

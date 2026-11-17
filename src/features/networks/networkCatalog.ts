@@ -1,6 +1,13 @@
 export type NetworkFamily = "evm" | "utxo" | "solana" | "tron" | "xrpl" | "ton";
 export type NetworkHistoryCapability =
-  "native-trx" | "trc20" | "xrp-direct-payment" | "ton-native" | "ton-jetton";
+  | "native-trx"
+  | "trc20"
+  | "xrp-direct-payment"
+  | "ton-native"
+  | "ton-jetton"
+  | "evm-native"
+  | "evm-internal"
+  | "erc20";
 
 export type NetworkCatalogEntry = {
   id: string;
@@ -10,6 +17,8 @@ export type NetworkCatalogEntry = {
   native_asset: string;
   explorer_url: string | null;
   history_sync_available?: boolean;
+  requires_api_key?: boolean;
+  requires_paid_tier?: boolean;
   history_coverage?: NetworkHistoryCapability[];
 };
 
@@ -29,6 +38,8 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
   const response = value as {
     networks?: unknown;
     history_sync_available?: unknown;
+    requires_api_key?: unknown;
+    requires_paid_tier?: unknown;
     history_coverage?: unknown;
   };
   if (
@@ -64,6 +75,10 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
       !(entry.explorer_url === null || isHttpsUrl(entry.explorer_url)) ||
       (entry.history_sync_available !== undefined &&
         typeof entry.history_sync_available !== "boolean") ||
+      (entry.requires_api_key !== undefined &&
+        typeof entry.requires_api_key !== "boolean") ||
+      (entry.requires_paid_tier !== undefined &&
+        typeof entry.requires_paid_tier !== "boolean") ||
       (entry.history_coverage !== undefined &&
         (!Array.isArray(entry.history_coverage) ||
           !entry.history_coverage.every(
@@ -72,7 +87,10 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
               capability === "trc20" ||
               capability === "xrp-direct-payment" ||
               capability === "ton-native" ||
-              capability === "ton-jetton",
+              capability === "ton-jetton" ||
+              capability === "evm-native" ||
+              capability === "evm-internal" ||
+              capability === "erc20",
           )))
     ) {
       return [];

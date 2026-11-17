@@ -207,13 +207,6 @@ impl BlockscoutClient {
             .map_err(|_| ApiError::ProviderUnavailable)
     }
 
-    pub(crate) async fn network_by_id(&self, id: &str) -> Option<NetworkInfo> {
-        self.network_catalog()
-            .await
-            .into_iter()
-            .find(|network| network.id == id)
-    }
-
     async fn fetch_pages<T: DeserializeOwned>(
         &self,
         chain: &EvmChain,
@@ -730,20 +723,45 @@ pub(crate) async fn sync_evm_address(
     network: &str,
     address: &str,
 ) -> Result<super::transfers::SyncResult, ApiError> {
-    let network_info = state
-        .blockscout
-        .network_by_id(network)
+    let network_info = networks::provider_catalog(state)
         .await
+        .into_iter()
+        .find(|candidate| candidate.id == network)
         .ok_or(ApiError::UnsupportedNetwork)?;
     if !network_info.history_sync_available {
         return Err(ApiError::ProviderUnavailable);
     }
-    let chain = EvmChain::from_network(network_info).ok_or(ApiError::UnsupportedNetwork)?;
-    let (transfers, pages, may_have_more_history) =
-        fetch_history(&state.blockscout, chain.clone(), address).await?;
+    let (transfers, pages, may_have_more_history, provider_name, source_host) = match network_info
+        .sync_provider
+    {
+        Some(networks::NetworkSyncProvider::Blockscout) => {
+            let chain = EvmChain::from_network(network_info).ok_or(ApiError::UnsupportedNetwork)?;
+            let (transfers, pages, more) =
+                fetch_history(&state.blockscout, chain.clone(), address).await?;
+            let source_host = state.blockscout.source_host_for(&chain);
+            let provider_name = format!("Blockscout ({source_host})");
+            (transfers, pages, more, provider_name, source_host)
+        }
+        Some(networks::NetworkSyncProvider::EtherscanV2) => {
+            let chain_id = network_info.chain_id.ok_or(ApiError::UnsupportedNetwork)?;
+            let supported = crate::etherscan_sync::SUPPORTED_NETWORKS
+                .iter()
+                .copied()
+                .find(|candidate| candidate.chain_id == chain_id)
+                .ok_or(ApiError::UnsupportedNetwork)?;
+            let (transfers, pages, more) =
+                crate::etherscan_sync::fetch_history(&state.etherscan, supported, address).await?;
+            (
+                transfers,
+                pages,
+                more,
+                "Etherscan API V2".to_owned(),
+                "api.etherscan.io".to_owned(),
+            )
+        }
+        None => return Err(ApiError::ProviderUnavailable),
+    };
     let observed_at = Utc::now();
-    let source_host = state.blockscout.source_host_for(&chain);
-    let provider_name = format!("Blockscout ({source_host})");
     let mut transaction = state.database.begin().await?;
     let mut saved = 0;
 

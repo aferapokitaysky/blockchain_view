@@ -7,6 +7,7 @@ use sqlx::PgPool;
 use tokio::time::timeout;
 use tracing::warn;
 
+use crate::etherscan_sync::EtherscanClient;
 use crate::evm_sync::BlockscoutClient;
 use crate::ton_sync::TonCenterClient;
 use crate::tron_sync::TronGridClient;
@@ -20,6 +21,7 @@ pub struct HealthState {
     pub solana_rpc_url: String,
     pub xrpl_rpc_url: String,
     pub blockscout: BlockscoutClient,
+    pub etherscan: EtherscanClient,
     pub tron_grid: TronGridClient,
     pub ton_center: TonCenterClient,
 }
@@ -38,6 +40,8 @@ pub(crate) fn unavailable_state() -> HealthState {
         xrpl_rpc_url: "http://127.0.0.1:1".into(),
         blockscout: BlockscoutClient::new("http://127.0.0.1:1", None, reqwest::Client::new())
             .expect("тестовая конфигурация Blockscout должна разбираться"),
+        etherscan: EtherscanClient::new(None, false, reqwest::Client::new())
+            .expect("тестовая конфигурация Etherscan должна разбираться"),
         tron_grid: TronGridClient::new("http://127.0.0.1:1", None, reqwest::Client::new())
             .expect("тестовая конфигурация TronGrid должна разбираться"),
         ton_center: TonCenterClient::new("http://127.0.0.1:1", None, reqwest::Client::new())

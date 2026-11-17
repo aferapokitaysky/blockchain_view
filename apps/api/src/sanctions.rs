@@ -253,10 +253,10 @@ pub async fn screen_address(
     State(state): State<ApiState>,
     Query(query): Query<ScreenAddressQuery>,
 ) -> Result<Json<ScreenAddressResponse>, ApiError> {
-    let catalog_entry = state
-        .blockscout
-        .network_by_id(&query.network)
+    let catalog_entry = crate::networks::provider_catalog(&state)
         .await
+        .into_iter()
+        .find(|network| network.id == query.network)
         .ok_or(ApiError::UnsupportedNetwork)?;
     let network = catalog_entry.id.clone();
     let (address, currency) = match network.as_str() {

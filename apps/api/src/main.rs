@@ -6,8 +6,8 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use tracefold_api::{
-    app, config::Config, evm_sync::BlockscoutClient, health::HealthState,
-    ton_sync::TonCenterClient, tron_sync::TronGridClient,
+    app, config::Config, etherscan_sync::EtherscanClient, evm_sync::BlockscoutClient,
+    health::HealthState, ton_sync::TonCenterClient, tron_sync::TronGridClient,
 };
 
 #[tokio::main]
@@ -42,6 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let xrpl_rpc_url =
         std::env::var("XRPL_RPC_URL").unwrap_or_else(|_| "https://s2.ripple.com:51234/".into());
     let blockscout = BlockscoutClient::from_env(http_client.clone())?;
+    let etherscan = EtherscanClient::from_env(http_client.clone(), redis.clone())?;
     let tron_grid = TronGridClient::from_env(http_client.clone())?;
     let ton_center = TonCenterClient::from_env(http_client.clone())?;
 
@@ -55,6 +56,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             solana_rpc_url,
             xrpl_rpc_url,
             blockscout,
+            etherscan,
             tron_grid,
             ton_center,
         }),

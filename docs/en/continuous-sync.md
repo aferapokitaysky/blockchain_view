@@ -8,6 +8,10 @@
 
 For each chain, the API prefers a validated HTTPS Blockscout instance URL from `instance_url_from_config` or an explorer explicitly hosted by Blockscout. It does not send requests to arbitrary explorer URLs or follow redirects. If `BLOCKSCOUT_API_KEY` is set, the configured multichain API base is used instead; a custom `BLOCKSCOUT_BASE_URL` also acts as an explicit provider override. The `history_sync_available` value means a provider route is configured, not that the endpoint was health-checked. Individual instances may rate-limit, block automated requests, return HTML challenges, or omit history; those responses become a generic provider-unavailable error and are not stored as observations.
 
+When a chain ID is absent from the Blockscout catalog snapshot, the API can add it from a fixed Etherscan V2 mainnet allowlist. It does not accept arbitrary chain IDs or provider URLs from requests, and it does not replace a chain already present in Blockscout's snapshot. The allowlist is based on Etherscan's [supported-chain list](https://docs.etherscan.io/supported-chains) and includes BNB Smart Chain, Polygon PoS, OP Mainnet, Avalanche C-Chain, Linea, Celo, Mantle, Gnosis, and other listed mainnets. The provider catalog includes `requires_api_key` and `requires_paid_tier` flags. Set `ETHERSCAN_API_KEY` on the backend; networks remain visible but have `history_sync_available: false` if the key is missing. Etherscan currently places BNB, OP, Avalanche, and Gnosis on paid plans; set `ETHERSCAN_ENABLE_PAID_CHAINS=true` only when the configured key is eligible for those chains. The setting defaults to `false`, so a paid-only provider response cannot take down sync for other networks.
+
+Etherscan V2 reads `txlist`, `txlistinternal`, and `tokentx`, so the stored coverage is native transactions, internal native-value calls, and ERC-20 transfer events. NFT transfers and other contract events are not decoded. Each of the three streams is limited to 10 pages of 100 rows per sync. API and sync-worker processes share a Redis `SET NX PX` gate that spaces requests by 400 ms for the configured API key; the gate fails closed if Redis is unavailable. This stays below Etherscan's documented [free-tier rate limit](https://docs.etherscan.io/rate-limits); higher-tier plans are intentionally kept at the same conservative interval. The provider does not document a token log index in `tokentx`; the adapter creates a stable local event index from the returned transfer fields so repeated records in one transaction remain separate. This index is a deduplication key, not an on-chain log index. Etherscan requires the API key in the query string; keep it in backend environment configuration, avoid logging full request URLs, and never put it in frontend code. A configured route does not guarantee plan access, provider availability, or complete retained history.
+
 ## TRON history and coverage
 
 The built-in `tron` network uses TronGrid mainnet at `https://api.trongrid.io`. Set `TRONGRID_BASE_URL` to another trusted TronGrid-compatible root URL if needed, and optionally set `TRONGRID_API_KEY`. The key is sent only in the backend `TRON-PRO-API-KEY` header; it is never part of a request URL or frontend configuration. `TRON-PRO-API-KEY` must not be exposed in browser code.
@@ -36,7 +40,7 @@ The adapter stores only successful, validated, direct XRP Payment events for the
 docker compose up --build
 ```
 
-Run it outside Compose with the same `DATABASE_URL`, `REDIS_URL`, `BITCOIN_ESPLORA_URL`, `XRPL_RPC_URL`, and Blockscout variables:
+Run it outside Compose with the same `DATABASE_URL`, `REDIS_URL`, `BITCOIN_ESPLORA_URL`, `XRPL_RPC_URL`, Blockscout, and optional Etherscan variables:
 
 ```bash
 cargo run --manifest-path apps/api/Cargo.toml --bin sync_worker

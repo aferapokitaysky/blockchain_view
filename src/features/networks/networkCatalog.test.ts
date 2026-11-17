@@ -106,6 +106,33 @@ describe("network catalog helpers", () => {
     ]);
   });
 
+  it("keeps Etherscan key and paid-tier requirements in the EVM catalog", () => {
+    const catalog = parseNetworkCatalog({
+      history_sync_available: false,
+      networks: [
+        {
+          id: "eip155:56",
+          name: "BNB Smart Chain",
+          family: "evm",
+          chain_id: 56,
+          native_asset: "BNB",
+          explorer_url: "https://bscscan.com/",
+          history_sync_available: false,
+          requires_api_key: true,
+          requires_paid_tier: true,
+          history_coverage: ["evm-native", "evm-internal", "erc20"],
+        },
+      ],
+    });
+
+    expect(catalog.networks[0]).toMatchObject({
+      id: "eip155:56",
+      requires_api_key: true,
+      requires_paid_tier: true,
+      history_coverage: ["evm-native", "evm-internal", "erc20"],
+    });
+  });
+
   it("resolves catalog labels and preserves an unknown id as a visible fallback", () => {
     const networks = [
       ...LEGACY_NETWORKS,
