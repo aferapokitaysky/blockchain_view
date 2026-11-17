@@ -14,7 +14,8 @@ const API_URL: &str = "https://api.etherscan.io/v2/api";
 const MAX_PAGES: u32 = 10;
 const PAGE_SIZE: u32 = 100;
 const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
-const MIN_REQUEST_INTERVAL: Duration = Duration::from_millis(340);
+const MIN_REQUEST_INTERVAL: Duration = Duration::from_millis(400);
+const REDIS_REQUEST_GATE_KEY: &str = "tracefold:etherscan:v2:request-gate";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct EtherscanNetwork {
@@ -223,6 +224,7 @@ pub struct EtherscanClient {
     api_url: Url,
     api_key: Option<String>,
     paid_tier_enabled: bool,
+    redis: Option<redis::Client>,
     last_request: Arc<Mutex<Option<Instant>>>,
 }
 
@@ -284,7 +286,7 @@ struct TokenTransfer {
 }
 
 impl EtherscanClient {
-    pub fn from_env(client: Client) -> Result<Self, EtherscanConfigError> {
+    pub fn from_env(client: Client, redis: redis::Client) -> Result<Self, EtherscanConfigError> {
         let api_key = env::var("ETHERSCAN_API_KEY")
             .ok()
             .filter(|key| !key.trim().is_empty());
@@ -300,13 +302,22 @@ impl EtherscanClient {
             Ok(_) => return Err(EtherscanConfigError::InvalidPaidTierSetting),
             Err(_) => false,
         };
-        Self::new(api_key.as_deref(), paid_tier_enabled, client)
+        Self::new_with_redis(api_key.as_deref(), paid_tier_enabled, client, Some(redis))
     }
 
     pub fn new(
         api_key: Option<&str>,
         paid_tier_enabled: bool,
         client: Client,
+    ) -> Result<Self, EtherscanConfigError> {
+        Self::new_with_redis(api_key, paid_tier_enabled, client, None)
+    }
+
+    fn new_with_redis(
+        api_key: Option<&str>,
+        paid_tier_enabled: bool,
+        client: Client,
+        redis: Option<redis::Client>,
     ) -> Result<Self, EtherscanConfigError> {
         if api_key.is_some_and(|key| key.chars().any(char::is_control)) {
             return Err(EtherscanConfigError::InvalidApiKey);
@@ -316,6 +327,7 @@ impl EtherscanClient {
             api_url: Url::parse(API_URL).expect("provider URL constant is valid"),
             api_key: api_key.map(str::to_owned),
             paid_tier_enabled,
+            redis,
             last_request: Arc::new(Mutex::new(None)),
         })
     }
@@ -326,6 +338,34 @@ impl EtherscanClient {
 
     pub(crate) fn is_network_available(&self, network: EtherscanNetwork) -> bool {
         self.is_configured() && (network.tier == EtherscanTier::Free || self.paid_tier_enabled)
+    }
+
+    async fn pace_request(&self) -> Result<(), ApiError> {
+        let Some(redis) = &self.redis else {
+            pace_request_local(&self.last_request).await;
+            return Ok(());
+        };
+
+        loop {
+            let mut connection = redis
+                .get_multiplexed_async_connection()
+                .await
+                .map_err(|_| ApiError::ProviderUnavailable)?;
+            let acquired: Option<String> = redis::cmd("SET")
+                .arg(REDIS_REQUEST_GATE_KEY)
+                .arg("1")
+                .arg("NX")
+                .arg("PX")
+                .arg(MIN_REQUEST_INTERVAL.as_millis() as u64)
+                .query_async(&mut connection)
+                .await
+                .map_err(|_| ApiError::ProviderUnavailable)?;
+            drop(connection);
+            if acquired.is_some() {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
     }
 
     async fn fetch_pages<T: for<'de> Deserialize<'de>>(
@@ -352,7 +392,7 @@ impl EtherscanClient {
                 ("sort", "desc".into()),
                 ("apikey", api_key.to_owned()),
             ]);
-            pace_request(&self.last_request).await;
+            self.pace_request().await?;
             let mut response = request
                 .send()
                 .await
@@ -408,7 +448,7 @@ impl EtherscanClient {
     }
 }
 
-async fn pace_request(last_request: &Mutex<Option<Instant>>) {
+async fn pace_request_local(last_request: &Mutex<Option<Instant>>) {
     let mut last = last_request.lock().await;
     if let Some(previous) = *last {
         tokio::time::sleep(MIN_REQUEST_INTERVAL.saturating_sub(previous.elapsed())).await;
@@ -639,9 +679,11 @@ mod tests {
     use serde_json::{Value, json};
     use tokio::{net::TcpListener, sync::Mutex, time::Instant};
 
+    use crate::error::ApiError;
+
     use super::{
-        EtherscanClient, EtherscanTier, SUPPORTED_NETWORKS, TokenTransfer, normalize_internal,
-        normalize_native, normalize_tokens, pace_request, trace_index,
+        EtherscanClient, EtherscanTier, REDIS_REQUEST_GATE_KEY, SUPPORTED_NETWORKS, TokenTransfer,
+        normalize_internal, normalize_native, normalize_tokens, pace_request_local, trace_index,
     };
 
     const ADDRESS: &str = "0x0123456789abcdef0123456789abcdef01234567";
@@ -801,9 +843,63 @@ mod tests {
     #[tokio::test]
     async fn spaces_concurrent_requests_to_the_free_tier_limit() {
         let gate = Mutex::new(None);
-        pace_request(&gate).await;
+        pace_request_local(&gate).await;
         let first = Instant::now();
-        pace_request(&gate).await;
-        assert!(first.elapsed() >= Duration::from_millis(300));
+        pace_request_local(&gate).await;
+        assert!(first.elapsed() >= Duration::from_millis(350));
+    }
+
+    #[tokio::test]
+    async fn redis_gate_serializes_separate_clients() {
+        let redis_url = std::env::var("REDIS_URL").expect("CI supplies Redis for this test");
+        let redis = redis::Client::open(redis_url).unwrap();
+        let mut connection = redis.get_multiplexed_async_connection().await.unwrap();
+        let _: i32 = redis::cmd("DEL")
+            .arg(REDIS_REQUEST_GATE_KEY)
+            .query_async(&mut connection)
+            .await
+            .unwrap();
+        drop(connection);
+
+        let first = EtherscanClient::new_with_redis(
+            Some("test-key"),
+            false,
+            reqwest::Client::new(),
+            Some(redis.clone()),
+        )
+        .unwrap();
+        let second = EtherscanClient::new_with_redis(
+            Some("test-key"),
+            false,
+            reqwest::Client::new(),
+            Some(redis.clone()),
+        )
+        .unwrap();
+        first.pace_request().await.unwrap();
+        let started = Instant::now();
+        second.pace_request().await.unwrap();
+        assert!(started.elapsed() >= Duration::from_millis(350));
+        let mut connection = redis.get_multiplexed_async_connection().await.unwrap();
+        let _: i32 = redis::cmd("DEL")
+            .arg(REDIS_REQUEST_GATE_KEY)
+            .query_async(&mut connection)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn redis_gate_fails_closed_when_redis_is_unavailable() {
+        let redis = redis::Client::open("redis://127.0.0.1:1/").unwrap();
+        let client = EtherscanClient::new_with_redis(
+            Some("test-key"),
+            false,
+            reqwest::Client::new(),
+            Some(redis),
+        )
+        .unwrap();
+        assert!(matches!(
+            client.pace_request().await,
+            Err(ApiError::ProviderUnavailable)
+        ));
     }
 }
