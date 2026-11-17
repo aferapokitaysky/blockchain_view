@@ -273,7 +273,7 @@ export function isEvmNetworkId(networkId: string): boolean {
 }
 
 export function hasAddressScreeningMapping(networkId: string): boolean {
-  return ["bitcoin", "ethereum", "base", "arbitrum"].includes(
+  return ["bitcoin", "ethereum", "base", "arbitrum", "tron", "xrpl"].includes(
     networkId.toLowerCase(),
   );
 }

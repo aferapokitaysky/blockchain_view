@@ -60,7 +60,10 @@ describe("network catalog helpers", () => {
 
   it("does not send dynamic EVM network ids to the legacy screening endpoint", () => {
     expect(hasAddressScreeningMapping("ethereum")).toBe(true);
+    expect(hasAddressScreeningMapping("tron")).toBe(true);
+    expect(hasAddressScreeningMapping("xrpl")).toBe(true);
     expect(hasAddressScreeningMapping("eip155:10")).toBe(false);
+    expect(hasAddressScreeningMapping("sui")).toBe(false);
   });
 
   it("accepts Solana only with its dedicated family and no EVM chain id", () => {

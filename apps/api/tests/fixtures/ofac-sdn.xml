@@ -12,7 +12,9 @@
     <idList>
       <id><uid>1</uid><idType>Digital Currency Address - ETH</idType><idNumber>0xAbCd000000000000000000000000000000000001</idNumber><idCountry/></id>
       <id><uid>2</uid><idType>Digital Currency Address - XBT</idType><idNumber>bc1qexample</idNumber><idCountry/></id>
-      <id><uid>3</uid><idType>Passport</idType><idNumber>PUBLIC-IDENTIFIER</idNumber><idCountry>US</idCountry></id>
+      <id><uid>3</uid><idType>Digital Currency Address - TRX</idType><idNumber>TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM</idNumber><idCountry/></id>
+      <id><uid>4</uid><idType>Digital Currency Address - XRP</idType><idNumber>rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh</idNumber><idCountry/></id>
+      <id><uid>5</uid><idType>Passport</idType><idNumber>PUBLIC-IDENTIFIER</idNumber><idCountry>US</idCountry></id>
     </idList>
   </sdnEntry>
 </sdnList>

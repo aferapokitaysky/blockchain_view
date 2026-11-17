@@ -15,7 +15,7 @@ async fn exact_address_screening_uses_the_imported_snapshot_and_reports_network_
     pool: PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let snapshot = parse_ofac_sdn_xml(SDN_FIXTURE)?;
-    assert_eq!(import_ofac_snapshot(&pool, snapshot).await?, 2);
+    assert_eq!(import_ofac_snapshot(&pool, snapshot).await?, 4);
     let app = app(test_state(pool));
 
     let exact_match = request(
@@ -46,7 +46,55 @@ async fn exact_address_screening_uses_the_imported_snapshot_and_reports_network_
     let no_match_body = response_json(no_match).await;
     assert_eq!(no_match_body["status"], "no_exact_match");
     assert_eq!(no_match_body["matches"].as_array().map(Vec::len), Some(0));
-    assert_eq!(no_match_body["source"]["address_count"], 2);
+    assert_eq!(no_match_body["source"]["address_count"], 4);
+
+    let tron_match = request(
+        app.clone(),
+        "/api/v1/screening/address?network=tron&address=TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM",
+    )
+    .await;
+    let tron_body = response_json(tron_match).await;
+    assert_eq!(tron_body["status"], "exact_match");
+    assert_eq!(tron_body["matches"][0]["currency_code"], "TRX");
+
+    let xrpl_match = request(
+        app.clone(),
+        "/api/v1/screening/address?network=xrpl&address=rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+    )
+    .await;
+    let xrpl_body = response_json(xrpl_match).await;
+    assert_eq!(xrpl_body["status"], "exact_match");
+    assert_eq!(xrpl_body["matches"][0]["currency_code"], "XRP");
+
+    let token_contract = request(
+        app.clone(),
+        "/api/v1/screening/address?network=tron&address=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+    )
+    .await;
+    assert_eq!(
+        response_json(token_contract).await["status"],
+        "no_exact_match"
+    );
+
+    let xrpl_address_on_tron = request(
+        app.clone(),
+        "/api/v1/screening/address?network=tron&address=rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+    )
+    .await;
+    assert_eq!(
+        xrpl_address_on_tron.status(),
+        axum::http::StatusCode::UNPROCESSABLE_ENTITY
+    );
+
+    let tron_address_on_xrpl = request(
+        app.clone(),
+        "/api/v1/screening/address?network=xrpl&address=TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM",
+    )
+    .await;
+    assert_eq!(
+        tron_address_on_xrpl.status(),
+        axum::http::StatusCode::UNPROCESSABLE_ENTITY
+    );
 
     let unsupported = request(
         app,
