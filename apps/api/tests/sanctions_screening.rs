@@ -74,6 +74,12 @@ fn test_state(database: PgPool) -> ApiState {
             reqwest::Client::new(),
         )
         .expect("тестовый Blockscout URL должен разбираться"),
+        etherscan: tracefold_api::etherscan_sync::EtherscanClient::new(
+            None,
+            false,
+            reqwest::Client::new(),
+        )
+        .expect("тестовая конфигурация Etherscan должна разбираться"),
         tron_grid: tracefold_api::tron_sync::TronGridClient::new(
             "http://127.0.0.1:1",
             None,

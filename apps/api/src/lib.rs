@@ -9,6 +9,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 pub mod addresses;
 pub mod config;
 pub mod error;
+pub mod etherscan_sync;
 pub mod evm_sync;
 pub mod graph_snapshots;
 pub mod health;

@@ -80,10 +80,10 @@ pub(crate) async fn create(
     Path(investigation_id): Path<Uuid>,
     Json(input): Json<CreateAddress>,
 ) -> Result<(StatusCode, Json<TrackedAddress>), ApiError> {
-    let network = state
-        .blockscout
-        .network_by_id(&input.network)
+    let network = crate::networks::provider_catalog(&state)
         .await
+        .into_iter()
+        .find(|network| network.id == input.network)
         .ok_or(ApiError::UnsupportedNetwork)?;
     let address = normalize_catalogued_address(&network, &input.address)?;
     let label = input
@@ -355,8 +355,11 @@ mod tests {
             native_asset: "ETH".into(),
             explorer_url: Some("https://explorer.optimism.io/".into()),
             history_sync_available: true,
+            requires_api_key: false,
+            requires_paid_tier: false,
             history_coverage: None,
             api_base_url: Some(reqwest::Url::parse("https://explorer.optimism.io/").unwrap()),
+            sync_provider: Some(crate::networks::NetworkSyncProvider::Blockscout),
         };
         assert_eq!(
             normalize_catalogued_address(&network, "0x0123456789ABCDEF0123456789ABCDEF01234567")
