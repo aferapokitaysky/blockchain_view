@@ -9,6 +9,10 @@ import {
 } from "lucide-react";
 import type { TrackedAddress, WalletHistory } from "../investigations/api";
 import {
+  getNetworkSyncAvailability,
+  type NetworkCatalog,
+} from "../networks/networkCatalog";
+import {
   buildWatchlistEntries,
   filterWatchlistEntries,
   formatWatchlistDate,
@@ -19,11 +23,12 @@ type WatchlistPageProps = {
   addresses: TrackedAddress[];
   histories: WalletHistory[];
   networkNames: Readonly<Record<string, string>>;
+  networkCatalog: NetworkCatalog;
   selectedAddressId: string;
   historyStatus: "loading" | "ready" | "error";
   loading: boolean;
   syncing: boolean;
-  canSync: boolean;
+  apiAvailable: boolean;
   error: string;
   investigationName: string;
   onSelectAddress: (addressId: string) => void;
@@ -38,11 +43,12 @@ export function WatchlistPage({
   addresses,
   histories,
   networkNames,
+  networkCatalog,
   selectedAddressId,
   historyStatus,
   loading,
   syncing,
-  canSync,
+  apiAvailable,
   error,
   investigationName,
   onSelectAddress,
@@ -82,6 +88,13 @@ export function WatchlistPage({
   const selectedEntry = entries.find(
     ({ address }) => address.id === selectedAddressId,
   );
+  const selectedSyncConfigured = selectedEntry
+    ? getNetworkSyncAvailability(
+        selectedEntry.address.network,
+        networkCatalog,
+      ) !== false
+    : false;
+  const canSync = apiAvailable && selectedSyncConfigured;
 
   return (
     <section className="watchlist-page" aria-labelledby="watchlist-title">
@@ -325,9 +338,11 @@ export function WatchlistPage({
                   </button>
                 </div>
                 <p className="watchlist-detail-note">
-                  {canSync
-                    ? "Sync reads public provider history. It does not monitor mempool activity."
-                    : "The API is unavailable. Reconnect before syncing history."}
+                  {!apiAvailable
+                    ? "The API is unavailable. Reconnect before syncing history."
+                    : !selectedSyncConfigured
+                      ? "History sync is not configured for this network. Saved observations remain available."
+                      : "Sync reads public provider history. It does not monitor mempool activity."}
                 </p>
               </>
             ) : (

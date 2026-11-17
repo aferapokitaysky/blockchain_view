@@ -1256,11 +1256,12 @@ function App() {
               addresses={activeInvestigationAddresses}
               histories={activeInvestigationData.histories}
               networkNames={networkNames}
+              networkCatalog={networkCatalog}
               selectedAddressId={selectedAddressId}
               historyStatus={activityStatus}
               loading={addressesLoading}
               syncing={isSyncing}
-              canSync={apiStatus === "online"}
+              apiAvailable={apiStatus === "online"}
               error={addressesError || historyError || activityError}
               investigationName={
                 investigations.find(({ id }) => id === activeInvestigationId)
