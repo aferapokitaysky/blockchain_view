@@ -412,19 +412,17 @@ async fn sync_native_stream(
         backfill_progress.backfill_end_lt = oldest_lt.and_then(|lt| lt.checked_sub(1));
         backfill_progress.backfill_exhausted = head.len() < PAGE_SIZE || oldest_lt.is_none();
         backfill_progress.may_have_more = !backfill_progress.backfill_exhausted;
-    } else if !backfill_exhausted {
-        if let Some(end_lt) = backfill_end_lt {
-            let page = provider
-                .get_page("transactions", address, None, Some(end_lt))
-                .await?;
-            backfill_progress.events = parse_native_events(&page, address);
-            backfill_progress.fetched = page.len();
-            backfill_progress.pages = 1;
-            backfill_progress.may_have_more = page.len() == PAGE_SIZE;
-            backfill_progress.backfill_end_lt =
-                oldest_native_lt(&page).and_then(|lt| lt.checked_sub(1));
-            backfill_progress.backfill_exhausted = page.len() < PAGE_SIZE || page.is_empty();
-        }
+    } else if let Some(end_lt) = backfill_end_lt.filter(|_| !backfill_exhausted) {
+        let page = provider
+            .get_page("transactions", address, None, Some(end_lt))
+            .await?;
+        backfill_progress.events = parse_native_events(&page, address);
+        backfill_progress.fetched = page.len();
+        backfill_progress.pages = 1;
+        backfill_progress.may_have_more = page.len() == PAGE_SIZE;
+        backfill_progress.backfill_end_lt =
+            oldest_native_lt(&page).and_then(|lt| lt.checked_sub(1));
+        backfill_progress.backfill_exhausted = page.len() < PAGE_SIZE || page.is_empty();
     }
     head_events.shrink_to_fit();
     head_progress.events = head_events;
@@ -472,19 +470,17 @@ async fn sync_jetton_stream(
         backfill_progress.backfill_end_lt = oldest_lt.and_then(|lt| lt.checked_sub(1));
         backfill_progress.backfill_exhausted = head.len() < PAGE_SIZE || oldest_lt.is_none();
         backfill_progress.may_have_more = !backfill_progress.backfill_exhausted;
-    } else if !backfill_exhausted {
-        if let Some(end_lt) = backfill_end_lt {
-            let page = provider
-                .get_page("jetton/transfers", address, None, Some(end_lt))
-                .await?;
-            backfill_progress.events = parse_jetton_events(&page, address);
-            backfill_progress.fetched = page.len();
-            backfill_progress.pages = 1;
-            backfill_progress.may_have_more = page.len() == PAGE_SIZE;
-            backfill_progress.backfill_end_lt =
-                oldest_jetton_lt(&page).and_then(|lt| lt.checked_sub(1));
-            backfill_progress.backfill_exhausted = page.len() < PAGE_SIZE || page.is_empty();
-        }
+    } else if let Some(end_lt) = backfill_end_lt.filter(|_| !backfill_exhausted) {
+        let page = provider
+            .get_page("jetton/transfers", address, None, Some(end_lt))
+            .await?;
+        backfill_progress.events = parse_jetton_events(&page, address);
+        backfill_progress.fetched = page.len();
+        backfill_progress.pages = 1;
+        backfill_progress.may_have_more = page.len() == PAGE_SIZE;
+        backfill_progress.backfill_end_lt =
+            oldest_jetton_lt(&page).and_then(|lt| lt.checked_sub(1));
+        backfill_progress.backfill_exhausted = page.len() < PAGE_SIZE || page.is_empty();
     }
     Ok((head_progress, backfill_progress))
 }
@@ -499,9 +495,9 @@ fn parse_native_events(rows: &[Value], tracked_address: &str) -> Vec<NativeTrans
         else {
             continue;
         };
-        let Some(lt) = transaction.get("lt").and_then(parse_i64) else {
+        if transaction.get("lt").and_then(parse_i64).is_none() {
             continue;
-        };
+        }
         let time = transaction
             .get("now")
             .and_then(parse_i64)
@@ -517,12 +513,10 @@ fn parse_native_events(rows: &[Value], tracked_address: &str) -> Vec<NativeTrans
         {
             continue;
         }
-        if let Some(inbound) = transaction.get("in_msg") {
-            if let Some(event) =
-                native_message_event(inbound, tracked_address, hash, -1, time, block_height)
-            {
-                events.push(event);
-            }
+        if let Some(event) = transaction.get("in_msg").and_then(|inbound| {
+            native_message_event(inbound, tracked_address, hash, -1, time, block_height)
+        }) {
+            events.push(event);
         }
         if let Some(messages) = transaction.get("out_msgs").and_then(Value::as_array) {
             for (index, outbound) in messages.iter().enumerate() {
