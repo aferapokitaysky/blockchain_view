@@ -20,6 +20,7 @@ pub mod networks;
 pub mod risk_signals;
 pub mod sanctions;
 pub mod solana_sync;
+pub mod sui_sync;
 pub mod sync_worker;
 pub mod ton_sync;
 pub mod transfers;
