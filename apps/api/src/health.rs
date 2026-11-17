@@ -22,6 +22,7 @@ pub struct HealthState {
     pub http_client: reqwest::Client,
     pub bitcoin_esplora_url: String,
     pub solana_rpc_url: String,
+    pub solana_helius_api_key: Option<String>,
     pub xrpl_rpc_url: String,
     pub blockscout: BlockscoutClient,
     pub etherscan: EtherscanClient,
@@ -43,6 +44,7 @@ pub(crate) fn unavailable_state() -> HealthState {
         http_client: reqwest::Client::new(),
         bitcoin_esplora_url: "http://127.0.0.1:1/api".into(),
         solana_rpc_url: "http://127.0.0.1:1".into(),
+        solana_helius_api_key: None,
         xrpl_rpc_url: "http://127.0.0.1:1".into(),
         blockscout: BlockscoutClient::new("http://127.0.0.1:1", None, reqwest::Client::new())
             .expect("тестовая конфигурация Blockscout должна разбираться"),

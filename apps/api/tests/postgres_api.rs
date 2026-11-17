@@ -599,6 +599,7 @@ fn test_state(database: PgPool) -> ApiState {
         http_client: reqwest::Client::new(),
         bitcoin_esplora_url: "https://blockstream.info/api".into(),
         solana_rpc_url: "http://127.0.0.1:1".into(),
+        solana_helius_api_key: None,
         xrpl_rpc_url: "http://127.0.0.1:1".into(),
         blockscout: tracefold_api::evm_sync::BlockscoutClient::new(
             "http://127.0.0.1:1",
