@@ -102,6 +102,10 @@ pub(crate) async fn sync_tracked_address(
     .await?
     .ok_or(ApiError::NotFound)?;
 
+    if address.network == "xrpl" {
+        return crate::xrpl_sync::sync_tracked_address(state, address_id, &address.address).await;
+    }
+
     if address.network == "solana" {
         return crate::solana_sync::sync_tracked_address(state, address_id, &address.address).await;
     }

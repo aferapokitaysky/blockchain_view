@@ -19,6 +19,7 @@ pub mod solana_sync;
 pub mod sync_worker;
 pub mod transfers;
 pub mod tron_sync;
+pub mod xrpl_sync;
 
 pub type ApiState = health::HealthState;
 
