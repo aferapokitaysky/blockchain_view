@@ -295,15 +295,6 @@ export async function detectAddressNetwork(
     };
   }
 
-  if (/^0x[\da-f]{64}$/i.test(address)) {
-    return {
-      status: "detected",
-      network: "aptos",
-      confidence: "format",
-      message:
-        "This is a 32-byte Aptos address format. Confirm Aptos before adding it.",
-    };
-  }
   if (/^(Ae2|DdzFF)/.test(address)) {
     return {
       status: "ambiguous",
@@ -326,14 +317,26 @@ export async function detectAddressNetwork(
   }
 
   if (/^0x/i.test(address)) {
-    if (!isHexAddress(address)) {
-      return { status: "invalid", message: "Invalid EVM address format." };
+    if (isHexAddress(address)) {
+      return {
+        status: "ambiguous",
+        family: "EVM",
+        message:
+          "This EVM address format is shared across networks. Choose a network to continue.",
+      };
+    }
+    if (/^0x[\da-f]{1,64}$/i.test(address)) {
+      return {
+        status: "detected",
+        network: "aptos",
+        confidence: "format",
+        message:
+          "This hexadecimal account address fits Aptos. Aptos addresses are padded to 32 bytes when saved.",
+      };
     }
     return {
-      status: "ambiguous",
-      family: "EVM",
-      message:
-        "This EVM address format is shared across networks. Choose a network to continue.",
+      status: "invalid",
+      message: "Invalid EVM or Aptos address format.",
     };
   }
 
