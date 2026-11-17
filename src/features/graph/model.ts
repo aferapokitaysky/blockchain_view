@@ -1,5 +1,6 @@
 import type {
   ObservedTransfer,
+  ObservedRelationship,
   TrackedAddress,
   WalletHistory,
 } from "../investigations/api";
@@ -43,6 +44,8 @@ export type FlowEdge = {
   latestTimeKind: "block" | "observed";
   providers: string[];
   sourceHosts: string[];
+  kind: "transfer" | "same_transaction";
+  relationships: number;
 };
 
 export type WalletFlowGraphModel = {
@@ -50,6 +53,7 @@ export type WalletFlowGraphModel = {
   edges: FlowEdge[];
   truncated: boolean;
   sourceTransferIds: string[];
+  sourceRelationshipIds: string[];
 };
 
 export type ObservedPathAnalysis = {
@@ -57,6 +61,12 @@ export type ObservedPathAnalysis = {
   paths: Array<{ targetId: string; depth: number; edgeIds: string[] }>;
   pathEdgeIds: Set<string>;
 };
+
+export function hasGraphEvidence(
+  graph: Pick<WalletFlowGraphModel, "sourceTransferIds" | "sourceRelationshipIds">,
+): boolean {
+  return graph.sourceTransferIds.length > 0 || graph.sourceRelationshipIds.length > 0;
+}
 
 function addressKey(network: string, address: string): string {
   const normalizedNetwork = network.toLowerCase();
@@ -111,6 +121,7 @@ export function buildWalletFlowGraph(
 
   const uniqueEvents = new Map<string, ObservedTransfer>();
   const sourceTransferIds = new Set<string>();
+  const sourceRelationshipIds = new Set<string>();
   let truncated = false;
   for (const { transfers } of histories) {
     for (const transfer of transfers) {
@@ -149,6 +160,8 @@ export function buildWalletFlowGraph(
       latestTimeKind: "block" | "observed";
       providers: Set<string>;
       sourceHosts: Set<string>;
+      kind: "transfer" | "same_transaction";
+      relationships: number;
     }
   >();
   const nodeKeys = new Set<string>();
@@ -189,8 +202,59 @@ export function buildWalletFlowGraph(
         sourceHosts: new Set(
           transfer.source_host ? [transfer.source_host] : [],
         ),
+        kind: "transfer",
+        relationships: 0,
       });
     }
+  }
+
+  const relationships = new Map<string, ObservedRelationship>();
+  for (const history of histories) {
+    for (const relationship of history.relationships ?? []) {
+      if (relationship.relationship_type !== "same_transaction") continue;
+      const tracked = addressKey(history.address.network, history.address.address);
+      const counterparty = addressKey(history.address.network, relationship.counterparty_address);
+      if (tracked === counterparty) continue;
+      if (
+        !sourceRelationshipIds.has(relationship.id) &&
+        sourceTransferIds.size + sourceRelationshipIds.size >= MAX_RECORDS
+      ) {
+        truncated = true;
+        break;
+      }
+      const [first, second] = [tracked, counterparty].sort();
+      const id = `${first}~${second}:same_transaction`;
+      relationships.set(`${id}:${relationship.id}`, relationship);
+      sourceRelationshipIds.add(relationship.id);
+      nodeKeys.add(tracked);
+      nodeKeys.add(counterparty);
+    }
+    if (truncated) break;
+  }
+  for (const [relationshipKey, relationship] of relationships) {
+    const id = relationshipKey.slice(0, relationshipKey.indexOf(":same_transaction:"));
+    const [from, to] = id.split("~");
+    const existing = edgeRows.get(id);
+    if (existing) {
+      existing.relationships += 1;
+      existing.providers.add(relationship.provider);
+      if (relationship.source_host) existing.sourceHosts.add(relationship.source_host);
+      continue;
+    }
+    edgeRows.set(id, {
+      from,
+      to,
+      asset: "Cardano transaction",
+      amount: 0n,
+      decimals: 0,
+      transfers: 0,
+      latestAt: relationship.block_time ?? relationship.observed_at,
+      latestTimeKind: relationship.block_time ? "block" : "observed",
+      providers: new Set([relationship.provider]),
+      sourceHosts: new Set(relationship.source_host ? [relationship.source_host] : []),
+      kind: "same_transaction",
+      relationships: 1,
+    });
   }
 
   const nodeWeights = new Map<string, number>();
@@ -230,6 +294,8 @@ export function buildWalletFlowGraph(
       latestTimeKind: edge.latestTimeKind,
       providers: [...edge.providers].sort(),
       sourceHosts: [...edge.sourceHosts].sort(),
+      kind: edge.kind,
+      relationships: edge.relationships,
     }));
   if (edgeRows.size > MAX_EDGES) truncated = true;
 
@@ -253,7 +319,13 @@ export function buildWalletFlowGraph(
     };
   });
 
-  return { nodes, edges, truncated, sourceTransferIds: [...sourceTransferIds] };
+  return {
+    nodes,
+    edges,
+    truncated,
+    sourceTransferIds: [...sourceTransferIds],
+    sourceRelationshipIds: [...sourceRelationshipIds],
+  };
 }
 
 export function findObservedPaths(
@@ -263,6 +335,7 @@ export function findObservedPaths(
 ): ObservedPathAnalysis {
   const outgoing = new Map<string, FlowEdge[]>();
   for (const edge of edges) {
+    if (edge.kind !== "transfer") continue;
     const fromEdges = outgoing.get(edge.from) ?? [];
     fromEdges.push(edge);
     outgoing.set(edge.from, fromEdges);

@@ -1,5 +1,6 @@
 export type SupportedNetwork =
   | "bitcoin"
+  | "cardano"
   | "tron"
   | "solana"
   | "xrpl"
@@ -31,8 +32,14 @@ export type AddressDetection =
       message: string;
     }
   | {
+      status: "detected";
+      network: "cardano";
+      confidence: "format-and-checksum";
+      message: string;
+    }
+  | {
       status: "ambiguous";
-      family: "EVM" | "Solana-compatible" | "Tron-compatible";
+      family: "EVM" | "Solana-compatible" | "Tron-compatible" | "Cardano-compatible";
       message: string;
     };
 
@@ -224,12 +231,58 @@ function isValidBech32WitnessAddress(address: string): boolean {
   return witnessVersion !== 0 || programLength === 20 || programLength === 32;
 }
 
+function isCardanoMainnetPaymentAddress(address: string): boolean {
+  if (address.length < 50 || address.length > 120 || address !== address.toLowerCase()) return false;
+  const separator = address.lastIndexOf("1");
+  if (separator !== 4 || address.slice(0, separator) !== "addr") return false;
+  const encoded = [...address.slice(separator + 1)].map((character) =>
+    BECH32_ALPHABET.indexOf(character),
+  );
+  if (encoded.length < 7 || encoded.some((value) => value < 0)) return false;
+  if (polymod([...expandHumanReadablePart("addr"), ...encoded]) !== BECH32) return false;
+  const data = encoded.slice(0, -6);
+  let accumulator = 0;
+  let bits = 0;
+  const bytes: number[] = [];
+  for (const value of data) {
+    accumulator = (accumulator << 5) | value;
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((accumulator >> bits) & 0xff);
+    }
+  }
+  if (bits >= 5 || ((accumulator << (8 - bits)) & 0xff) !== 0) return false;
+  if (bytes.length < 29) return false;
+  const addressType = bytes[0] >> 4;
+  return addressType <= 7 && (bytes[0] & 0x0f) === 1;
+}
+
 /** Определяет формат адреса и не выдаёт догадку за конкретную EVM-сеть. */
 export async function detectAddressNetwork(
   input: string,
 ): Promise<AddressDetection> {
   const address = input.trim();
   if (!address) return { status: "empty", message: "Paste a wallet address." };
+
+  if (address.startsWith("addr1")) {
+    if (!isCardanoMainnetPaymentAddress(address)) {
+      return { status: "invalid", message: "Invalid Cardano mainnet payment address or checksum." };
+    }
+    return {
+      status: "detected",
+      network: "cardano",
+      confidence: "format-and-checksum",
+      message: "Cardano mainnet payment address verified by format and checksum.",
+    };
+  }
+  if (/^(Ae2|DdzFF)/.test(address)) {
+    return {
+      status: "ambiguous",
+      family: "Cardano-compatible",
+      message: "This looks like a Cardano Byron address. Choose Cardano; the API will validate its checksum and network.",
+    };
+  }
 
   if (/^(-?\d+:|[A-Za-z0-9_-]{48}$)/.test(address)) {
     if (!isValidTonAddress(address)) {

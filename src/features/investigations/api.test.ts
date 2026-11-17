@@ -3,6 +3,7 @@ import {
   checkApiHealth,
   listSupportedNetworks,
   listTrackedWallets,
+  listTrackedWalletHistories,
   listGraphSnapshots,
   listWalletHistory,
   listWalletRiskSignals,
@@ -38,6 +39,35 @@ afterEach(() => {
 });
 
 describe("investigation API client", () => {
+  it("loads Cardano transfers and participant evidence in one history response", async () => {
+    const cardanoAddress = { ...trackedAddress, network: "cardano", address: "addr1test" };
+    const relationship = {
+      id: "relationship-1",
+      tracked_address_id: cardanoAddress.id,
+      network: "cardano",
+      transaction_hash: "a".repeat(64),
+      counterparty_address: "Ae2tdPwUPEZLs4HtbuNey7tK4hTKrwNwYtGqp7bDfCy2WdR3P6735W5Yfpe",
+      relationship_type: "same_transaction",
+      participant_role: "input",
+      block_height: 42,
+      block_time: "2026-11-16T10:00:00Z",
+      confirmed: true,
+      provider: "Blockfrost Cardano Mainnet",
+      source_host: "cardano-mainnet.blockfrost.io",
+      observed_at: "2026-11-16T10:00:00Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ transfers: [], relationships: [relationship] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listTrackedWalletHistories([cardanoAddress])).resolves.toEqual([
+      { address: cardanoAddress, transfers: [], relationships: [relationship] },
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://127.0.0.1:8080/api/v1/investigations/${investigation.id}/addresses/${cardanoAddress.id}/history`,
+      expect.objectContaining({ headers: {} }),
+    );
+  });
+
   it("loads and validates the server network catalog", async () => {
     const catalog = {
       history_sync_available: true,
@@ -175,6 +205,7 @@ describe("investigation API client", () => {
       edges: [],
       truncated: false,
       sourceTransferIds: ["event-1"],
+      sourceRelationshipIds: [],
     };
     const snapshot = {
       id: "snapshot-1",
@@ -184,6 +215,7 @@ describe("investigation API client", () => {
       focus_address: "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM",
       max_depth: 2 as const,
       source_transfer_ids: ["event-1"],
+      source_relationship_ids: [],
       graph,
       created_at: "2026-11-17T10:00:00Z",
     };
@@ -201,6 +233,7 @@ describe("investigation API client", () => {
         focusAddress: snapshot.focus_address,
         maxDepth: snapshot.max_depth,
         sourceTransferIds: snapshot.source_transfer_ids,
+        sourceRelationshipIds: snapshot.source_relationship_ids,
         graph,
       }),
     ).resolves.toEqual(snapshot);

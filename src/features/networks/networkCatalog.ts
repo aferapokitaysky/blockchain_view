@@ -1,5 +1,6 @@
 export type NetworkFamily = "evm" | "utxo" | "solana" | "tron" | "xrpl" | "ton";
 export type NetworkHistoryCapability =
+  | "cardano-utxo"
   | "native-trx"
   | "trc20"
   | "xrp-direct-payment"
@@ -28,7 +29,7 @@ export type NetworkCatalog = {
 };
 
 const NETWORK_ID_PATTERN =
-  /^(bitcoin|ethereum|base|arbitrum|solana|tron|xrpl|ton|eip155:[1-9]\d*)$/;
+  /^(bitcoin|cardano|ethereum|base|arbitrum|solana|tron|xrpl|ton|eip155:[1-9]\d*)$/;
 
 export function parseNetworkCatalog(value: unknown): NetworkCatalog {
   if (!value || typeof value !== "object" || !("networks" in value)) {
@@ -83,6 +84,7 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
         (!Array.isArray(entry.history_coverage) ||
           !entry.history_coverage.every(
             (capability) =>
+              capability === "cardano-utxo" ||
               capability === "native-trx" ||
               capability === "trc20" ||
               capability === "xrp-direct-payment" ||
@@ -111,6 +113,8 @@ export function parseNetworkCatalog(value: unknown): NetworkCatalog {
           (entry.id.startsWith("eip155:") &&
             Number(entry.id.slice("eip155:".length)) !== entry.chain_id))) ||
       (entry.id === "bitcoin" &&
+        (entry.family !== "utxo" || entry.chain_id !== null)) ||
+      (entry.id === "cardano" &&
         (entry.family !== "utxo" || entry.chain_id !== null)) ||
       (entry.id === "solana" &&
         (entry.family !== "solana" || entry.chain_id !== null)) ||
@@ -164,6 +168,16 @@ export const LEGACY_NETWORKS: NetworkCatalogEntry[] = [
     chain_id: null,
     native_asset: "BTC",
     explorer_url: "https://blockstream.info/",
+  },
+  {
+    id: "cardano",
+    name: "Cardano",
+    family: "utxo",
+    chain_id: null,
+    native_asset: "ADA",
+    explorer_url: "https://cardanoscan.io/",
+    requires_api_key: true,
+    history_coverage: ["cardano-utxo"],
   },
   {
     id: "base",

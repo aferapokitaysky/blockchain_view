@@ -14,6 +14,14 @@ describe("detectAddressNetwork", () => {
       status: "invalid",
     });
   });
+  it("validates Shelley Cardano mainnet payment addresses and routes Byron addresses conservatively", async () => {
+    await expect(detectAddressNetwork("addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x"))
+      .resolves.toMatchObject({ status: "detected", network: "cardano" });
+    await expect(detectAddressNetwork("addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3y"))
+      .resolves.toMatchObject({ status: "invalid" });
+    await expect(detectAddressNetwork("Ae2tdPwUPEZLs4HtbuNey7tK4hTKrwNwYtGqp7bDfCy2WdR3P6735W5Yfpe"))
+      .resolves.toMatchObject({ status: "ambiguous", family: "Cardano-compatible" });
+  });
   it("does not guess which EVM chain owns a valid address", async () => {
     const result = await detectAddressNetwork(
       "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",

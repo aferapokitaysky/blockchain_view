@@ -58,17 +58,36 @@ export type ObservedTransfer = {
     | "solana_spl"
     | "tron_native"
     | "trc20"
-    | "xrpl_native";
+    | "xrpl_native"
+    | "cardano_native"
+    | "cardano_asset";
+  source_host?: string;
   token_decimals?: number | null;
   token_contract_address?: string | null;
   from_address?: string | null;
   to_address?: string | null;
-  source_host?: string;
+};
+
+export type ObservedRelationship = {
+  id: string;
+  tracked_address_id: string;
+  network: "cardano";
+  transaction_hash: string;
+  counterparty_address: string;
+  relationship_type: "same_transaction";
+  participant_role: "input" | "output" | "input_and_output";
+  block_height: number | null;
+  block_time: string | null;
+  confirmed: boolean;
+  provider: string;
+  source_host: string;
+  observed_at: string;
 };
 
 export type WalletHistory = {
   address: TrackedAddress;
   transfers: ObservedTransfer[];
+  relationships?: ObservedRelationship[];
 };
 
 export type GraphSnapshot = {
@@ -79,6 +98,7 @@ export type GraphSnapshot = {
   focus_address: string | null;
   max_depth: 1 | 2 | 3;
   source_transfer_ids: string[];
+  source_relationship_ids: string[];
   graph: {
     nodes: Array<{
       id: string;
@@ -101,9 +121,12 @@ export type GraphSnapshot = {
       latestTimeKind: "block" | "observed";
       providers: string[];
       sourceHosts: string[];
+      kind: "transfer" | "same_transaction";
+      relationships: number;
     }>;
     truncated: boolean;
     sourceTransferIds: string[];
+    sourceRelationshipIds: string[];
   };
   created_at: string;
 };
@@ -333,6 +356,23 @@ export async function listWalletHistory(
   );
 }
 
+async function listWalletHistoryRecord(
+  address: TrackedAddress,
+): Promise<Pick<WalletHistory, "transfers" | "relationships">> {
+  if (address.network !== "cardano") {
+    return {
+      transfers: await listWalletHistory(address),
+      relationships: [],
+    };
+  }
+  return requestJson<Pick<WalletHistory, "transfers" | "relationships">>(
+    `/api/v1/investigations/${address.investigation_id}/addresses/${address.id}/history`,
+    undefined,
+    REQUEST_TIMEOUT_MS,
+    "Could not load saved Cardano history and participants. Please try again.",
+  );
+}
+
 export async function listWalletRiskSignals(
   address: TrackedAddress,
 ): Promise<StoredRiskSignal[]> {
@@ -352,7 +392,7 @@ export async function listTrackedWalletHistories(
     ADDRESS_LIST_CONCURRENCY,
     async (address) => ({
       address,
-      transfers: await listWalletHistory(address),
+      ...(await listWalletHistoryRecord(address)),
     }),
   );
 }
@@ -375,6 +415,7 @@ export async function saveGraphSnapshot(input: {
   focusAddress: string | null;
   maxDepth: 1 | 2 | 3;
   sourceTransferIds: string[];
+  sourceRelationshipIds: string[];
   graph: GraphSnapshot["graph"];
 }): Promise<GraphSnapshot> {
   return requestJson<GraphSnapshot>(
@@ -387,6 +428,7 @@ export async function saveGraphSnapshot(input: {
         focus_address: input.focusAddress,
         max_depth: input.maxDepth,
         source_transfer_ids: input.sourceTransferIds,
+        source_relationship_ids: input.sourceRelationshipIds,
         graph: input.graph,
       }),
     },

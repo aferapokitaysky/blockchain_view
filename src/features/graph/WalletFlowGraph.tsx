@@ -5,6 +5,7 @@ import {
   buildWalletFlowGraph,
   findObservedPaths,
   getCounterpartyPrefill,
+  hasGraphEvidence,
 } from "./model";
 import "./WalletFlowGraph.css";
 
@@ -89,8 +90,8 @@ export function WalletFlowGraph({
         <div>
           <h2 id="flow-graph-title">Wallet connections</h2>
           <p>
-            Observed transfers from EVM, TRON, Solana and XRPL. Bitcoin
-            counterpart addresses are not available from address-level history.
+            Observed transfers and same-transaction participant relations.
+            Cardano relations do not imply a direct payment path.
           </p>
         </div>
         <div className="flow-graph-counts" aria-live="polite">
@@ -105,7 +106,7 @@ export function WalletFlowGraph({
           className="button button-secondary"
           disabled={
             savingSnapshot ||
-            graph.sourceTransferIds.length === 0 ||
+            !hasGraphEvidence(graph) ||
             !histories[0]
           }
           onClick={() =>
@@ -115,6 +116,7 @@ export function WalletFlowGraph({
               focus_address: focusedNode?.address ?? null,
               max_depth: maxDepth,
               source_transfer_ids: graph.sourceTransferIds,
+              source_relationship_ids: graph.sourceRelationshipIds,
               graph,
             })
           }
@@ -190,9 +192,8 @@ export function WalletFlowGraph({
           <div>
             <strong>No direct links found</strong>
             <p>
-              Sync supported wallet history to reveal transfers between
-              addresses. Bitcoin observations are not used to infer
-              counterparties.
+              Sync supported wallet history to reveal transfer and participant
+              evidence. UTXO participants do not identify who paid whom.
             </p>
           </div>
         </div>
@@ -207,6 +208,9 @@ export function WalletFlowGraph({
             </span>
             <span>
               <i className="edge-dot" /> Observed transfer
+            </span>
+            <span>
+              <i className="relationship-dot" /> Same transaction, direction unknown
             </span>
           </div>
           <div
@@ -250,12 +254,14 @@ export function WalletFlowGraph({
                   return (
                     <g key={edge.id}>
                       <title>
-                        {`${shortAddress(from.address)} to ${shortAddress(to.address)}: ${edge.amount} ${edge.asset}, ${edge.transfers} event${edge.transfers === 1 ? "" : "s"}`}
+                        {edge.kind === "transfer"
+                          ? `${shortAddress(from.address)} to ${shortAddress(to.address)}: ${edge.amount} ${edge.asset}, ${edge.transfers} event${edge.transfers === 1 ? "" : "s"}`
+                          : `${shortAddress(from.address)} and ${shortAddress(to.address)} appeared in the same Cardano transaction; flow attribution is unknown.`}
                       </title>
                       <path
-                        className={`flow-edge-line ${isPathEdge ? "is-path" : pathAnalysis ? "is-dimmed" : ""}`}
+                        className={`flow-edge-line ${edge.kind === "same_transaction" ? "is-relationship" : ""} ${isPathEdge ? "is-path" : pathAnalysis && edge.kind === "transfer" ? "is-dimmed" : ""}`}
                         d={`M ${from.x} ${from.y} Q ${midX} ${midY} ${to.x} ${to.y}`}
-                        markerEnd="url(#flow-arrow)"
+                        markerEnd={edge.kind === "transfer" ? "url(#flow-arrow)" : undefined}
                         strokeWidth={Math.min(
                           1.4 + Math.log2(edge.transfers + 1),
                           4,
@@ -334,15 +340,19 @@ export function WalletFlowGraph({
                   return (
                     <li key={edge.id}>
                       <span>
-                        {edge.from === focusedNode.id
-                          ? "Sent to"
-                          : "Received from"}{" "}
+                        {edge.kind === "same_transaction"
+                          ? "Appeared in the same Cardano transaction as"
+                          : edge.from === focusedNode.id
+                            ? "Sent to"
+                            : "Received from"}{" "}
                         {other ? shortAddress(other.address) : "unknown"}
                       </span>
-                      <strong>
-                        {edge.amount} {edge.asset}{" "}
-                        <small>· {edge.transfers} events</small>
-                      </strong>
+                      {edge.kind === "transfer" && (
+                        <strong>
+                          {edge.amount} {edge.asset}{" "}
+                          <small>· {edge.transfers} events</small>
+                        </strong>
+                      )}
                       <small className="flow-edge-provenance">
                         {edge.providers.join(", ")} · latest{" "}
                         {edge.latestTimeKind === "block"

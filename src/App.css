@@ -1244,6 +1244,12 @@
   border-radius: 0 !important;
   background: #57b7a2;
 }
+.relationship-dot {
+  width: 12px !important;
+  height: 0 !important;
+  border-top: 1px dashed #8998a1;
+  border-radius: 0 !important;
+}
 .flow-graph-canvas {
   max-width: 100%;
   overflow: auto;

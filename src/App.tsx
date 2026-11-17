@@ -605,10 +605,14 @@ function App() {
     if (addressDetection.status !== "ambiguous") return [];
     return addressDetection.family === "EVM"
       ? evmNetworks
-      : networkCatalog.networks.filter(({ family }) =>
+      : networkCatalog.networks.filter(({ family, id }) =>
           addressDetection.family === "Tron-compatible"
             ? family === "tron"
-            : family === "solana",
+            : addressDetection.family === "Solana-compatible"
+              ? family === "solana"
+              : addressDetection.family === "Cardano-compatible"
+                ? id === "cardano"
+                : family === "solana",
         );
   }, [addressDetection, evmNetworks, networkCatalog.networks]);
   const selectedNetworkChoice = networkCatalog.networks.find(
@@ -1048,6 +1052,7 @@ function App() {
         focusAddress: input.focus_address,
         maxDepth: input.max_depth,
         sourceTransferIds: input.source_transfer_ids,
+        sourceRelationshipIds: input.source_relationship_ids,
         graph: input.graph,
       });
       setFlowSnapshots((current) => [snapshot, ...current]);

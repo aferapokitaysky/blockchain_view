@@ -26,6 +26,29 @@ function transfer(overrides: Partial<ObservedTransfer> = {}): ObservedTransfer {
 }
 
 describe("derived transaction behavior signals", () => {
+  it("does not infer rapid turnover from Cardano aggregate UTxO deltas", () => {
+    const transfers = [
+      ["in-a", "inbound", "100", "0", "2026-11-16T10:00:00Z"],
+      ["out-a", "outbound", "0", "90", "2026-11-16T10:02:00Z"],
+      ["in-b", "inbound", "200", "0", "2026-11-16T11:00:00Z"],
+      ["out-b", "outbound", "0", "180", "2026-11-16T11:02:00Z"],
+    ].map(([id, direction, received_amount, spent_amount, block_time]) =>
+      transfer({
+        id,
+        network: "cardano",
+        transfer_kind: "cardano_native",
+        direction: direction as "inbound" | "outbound",
+        received_amount,
+        spent_amount,
+        from_address: null,
+        to_address: null,
+        block_time,
+      }),
+    );
+
+    expect(deriveBehaviorSignals(transfers)).toEqual([]);
+  });
+
   it("reports distinct confirmed counterparties in one rolling 24-hour window", () => {
     const signals = deriveBehaviorSignals(
       ["0xa", "0xb", "0xc", "0xd"].map((address, index) =>

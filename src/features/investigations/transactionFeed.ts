@@ -58,6 +58,7 @@ export function getTransferRiskPlaceholder(
 const NETWORK_NAMES: Record<string, TransactionFeedItem["network"]> = {
   ethereum: "Ethereum",
   bitcoin: "Bitcoin",
+  cardano: "Cardano",
   base: "Base",
   arbitrum: "Arbitrum",
   solana: "Solana",
@@ -106,6 +107,15 @@ function getFlow(transfer: ObservedTransfer, trackedWallet: string) {
       return { from: trackedWallet, to: "Unattributed Bitcoin outputs" };
     }
     return { from: "Bitcoin transaction", to: "Tracked wallet activity" };
+  }
+  if (transfer.network === "cardano") {
+    if (transfer.direction === "inbound") {
+      return { from: "Cardano transaction participants", to: trackedWallet };
+    }
+    if (transfer.direction === "outbound") {
+      return { from: trackedWallet, to: "Cardano transaction participants" };
+    }
+    return { from: "Cardano UTxO observation", to: "Tracked wallet activity" };
   }
 
   return {
