@@ -63,9 +63,14 @@ export type ObservedPathAnalysis = {
 };
 
 export function hasGraphEvidence(
-  graph: Pick<WalletFlowGraphModel, "sourceTransferIds" | "sourceRelationshipIds">,
+  graph: Pick<
+    WalletFlowGraphModel,
+    "sourceTransferIds" | "sourceRelationshipIds"
+  >,
 ): boolean {
-  return graph.sourceTransferIds.length > 0 || graph.sourceRelationshipIds.length > 0;
+  return (
+    graph.sourceTransferIds.length > 0 || graph.sourceRelationshipIds.length > 0
+  );
 }
 
 function addressKey(network: string, address: string): string {
@@ -212,8 +217,14 @@ export function buildWalletFlowGraph(
   for (const history of histories) {
     for (const relationship of history.relationships ?? []) {
       if (relationship.relationship_type !== "same_transaction") continue;
-      const tracked = addressKey(history.address.network, history.address.address);
-      const counterparty = addressKey(history.address.network, relationship.counterparty_address);
+      const tracked = addressKey(
+        history.address.network,
+        history.address.address,
+      );
+      const counterparty = addressKey(
+        history.address.network,
+        relationship.counterparty_address,
+      );
       if (tracked === counterparty) continue;
       if (
         !sourceRelationshipIds.has(relationship.id) &&
@@ -232,13 +243,17 @@ export function buildWalletFlowGraph(
     if (truncated) break;
   }
   for (const [relationshipKey, relationship] of relationships) {
-    const id = relationshipKey.slice(0, relationshipKey.indexOf(":same_transaction:"));
+    const id = relationshipKey.slice(
+      0,
+      relationshipKey.indexOf(":same_transaction:"),
+    );
     const [from, to] = id.split("~");
     const existing = edgeRows.get(id);
     if (existing) {
       existing.relationships += 1;
       existing.providers.add(relationship.provider);
-      if (relationship.source_host) existing.sourceHosts.add(relationship.source_host);
+      if (relationship.source_host)
+        existing.sourceHosts.add(relationship.source_host);
       continue;
     }
     edgeRows.set(id, {
@@ -251,7 +266,9 @@ export function buildWalletFlowGraph(
       latestAt: relationship.block_time ?? relationship.observed_at,
       latestTimeKind: relationship.block_time ? "block" : "observed",
       providers: new Set([relationship.provider]),
-      sourceHosts: new Set(relationship.source_host ? [relationship.source_host] : []),
+      sourceHosts: new Set(
+        relationship.source_host ? [relationship.source_host] : [],
+      ),
       kind: "same_transaction",
       relationships: 1,
     });

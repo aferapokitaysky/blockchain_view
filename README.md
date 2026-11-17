@@ -116,6 +116,8 @@ cargo test --manifest-path apps/api/Cargo.toml --all-features
 
 Bitcoin and selected EVM address sync read history from Blockstream Esplora and Blockscout on demand and through the Compose background worker. This provides blockchain transaction data, not identity attribution or comprehensive wallet-risk coverage. An optional local import supports exact address checks against the official OFAC SDN snapshot for Bitcoin and Ethereum; it refreshes only when an operator runs the importer. The API does not use OFAC's web search interface for automated queries ([OFAC FAQ](https://ofac.treasury.gov/faqs/287)). Commercial blockchain analytics require a separately licensed provider account.
 
+Cardano mainnet history uses Blockfrost when `BLOCKFROST_PROJECT_ID` is configured on the backend. Sync is bounded to 82 logical provider operations (up to 164 HTTP attempts including one retry per 429/5xx) and uses Redis pacing. Cardano graph links are same-transaction participant evidence, not attributed transfers; see [Cardano coverage and limits](docs/en/continuous-sync.md).
+
 ## Contributing
 
 Issues and pull requests are welcome. Before proposing a provider or scoring change, include its data provenance, license or terms, update behavior, and how an analyst can inspect the evidence. Keep observed facts and inferred relationships distinct.

@@ -170,6 +170,176 @@ async fn graph_snapshot_is_saved_and_rejects_observations_from_another_case(pool
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
+#[sqlx::test(migrations = "./migrations")]
+async fn cardano_history_returns_observed_transfers_and_participant_relations(pool: PgPool) {
+    let state = test_state(pool.clone());
+    let investigation = create_investigation(&state, "Cardano history response").await;
+    let tracked_address = "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x";
+    let counterparty = "Ae2tdPwUPEZLs4HtbuNey7tK4hTKrwNwYtGqp7bDfCy2WdR3P6735W5Yfpe";
+    let address_id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO tracked_addresses (investigation_id, network, address) \
+         VALUES ($1, 'cardano', $2) RETURNING id",
+    )
+    .bind(investigation.id)
+    .bind(tracked_address)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let transaction_hash = "a".repeat(64);
+    sqlx::query(
+        "INSERT INTO observed_transfers \
+         (tracked_address_id, network, transaction_hash, event_index, transfer_kind, direction, \
+          received_amount, spent_amount, asset, token_decimals, from_address, to_address, confirmed, provider, source_host) \
+         VALUES ($1, 'cardano', $2, 0, 'cardano_native', 'both', 250000, 1000000, 'ADA', 6, NULL, NULL, TRUE, 'Blockfrost', 'cardano-mainnet.blockfrost.io')",
+    )
+    .bind(address_id)
+    .bind(&transaction_hash)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO observed_relationships \
+         (tracked_address_id, network, transaction_hash, counterparty_address, relationship_type, \
+          participant_role, block_height, block_time, confirmed, provider, source_host) \
+         VALUES ($1, 'cardano', $2, $3, 'same_transaction', 'input', 42, now(), TRUE, 'Blockfrost', 'cardano-mainnet.blockfrost.io')",
+    )
+    .bind(address_id)
+    .bind(&transaction_hash)
+    .bind(counterparty)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let response = send(
+        state,
+        Method::GET,
+        &format!(
+            "/api/v1/investigations/{}/addresses/{address_id}/history",
+            investigation.id
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let history: serde_json::Value = response_json(response).await;
+    assert_eq!(history["transfers"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        history["transfers"][0]["from_address"],
+        serde_json::Value::Null
+    );
+    assert_eq!(history["transfers"][0]["received_amount"], "250000");
+    assert_eq!(history["relationships"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        history["relationships"][0]["counterparty_address"],
+        counterparty
+    );
+    assert_eq!(
+        history["relationships"][0]["relationship_type"],
+        "same_transaction"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn graph_snapshot_persists_only_cardano_relationships_from_its_investigation(pool: PgPool) {
+    let state = test_state(pool.clone());
+    let first = create_investigation(&state, "Cardano graph case").await;
+    let second = create_investigation(&state, "Other Cardano case").await;
+    let first_address = create_cardano_address(&pool, first.id).await;
+    let second_address = create_cardano_address(&pool, second.id).await;
+    let first_relationship = insert_cardano_relationship(&pool, first_address.id).await;
+    let second_relationship = insert_cardano_relationship(&pool, second_address.id).await;
+    let body = serde_json::json!({
+        "title": "Cardano participants",
+        "focus_network": "cardano",
+        "focus_address": first_address.address,
+        "max_depth": 2,
+        "source_transfer_ids": [],
+        "source_relationship_ids": [first_relationship],
+        "graph": {"nodes": [], "edges": [], "truncated": false, "sourceRelationshipIds": [first_relationship]},
+    });
+    let body = body.to_string();
+    let response = send(
+        state.clone(),
+        Method::POST,
+        &format!("/api/v1/investigations/{}/graph-snapshots", first.id),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let snapshot: serde_json::Value = response_json(response).await;
+    assert_eq!(
+        snapshot["source_relationship_ids"][0],
+        first_relationship.to_string()
+    );
+
+    let response = send(
+        state.clone(),
+        Method::GET,
+        &format!("/api/v1/investigations/{}/graph-snapshots", first.id),
+        None,
+    )
+    .await;
+    let snapshots: Vec<serde_json::Value> = response_json(response).await;
+    assert_eq!(
+        snapshots[0]["source_relationship_ids"][0],
+        first_relationship.to_string()
+    );
+
+    let invalid = serde_json::json!({
+        "title": "Cross-case relationship",
+        "focus_network": null,
+        "focus_address": null,
+        "max_depth": 1,
+        "source_transfer_ids": [],
+        "source_relationship_ids": [second_relationship],
+        "graph": {"nodes": [], "edges": []},
+    });
+    let invalid = invalid.to_string();
+    let response = send(
+        state,
+        Method::POST,
+        &format!("/api/v1/investigations/{}/graph-snapshots", first.id),
+        Some(&invalid),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+async fn create_cardano_address(pool: &PgPool, investigation_id: Uuid) -> TrackedAddress {
+    let address = "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x";
+    let id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO tracked_addresses (investigation_id, network, address) \
+         VALUES ($1, 'cardano', $2) RETURNING id",
+    )
+    .bind(investigation_id)
+    .bind(address)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    TrackedAddress {
+        id,
+        network: "cardano".into(),
+        address: address.into(),
+        label: None,
+    }
+}
+
+async fn insert_cardano_relationship(pool: &PgPool, tracked_address_id: Uuid) -> Uuid {
+    sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO observed_relationships \
+         (tracked_address_id, network, transaction_hash, counterparty_address, relationship_type, \
+          participant_role, confirmed, provider, source_host) \
+         VALUES ($1, 'cardano', $2, $3, 'same_transaction', 'output', TRUE, 'Blockfrost', 'cardano-mainnet.blockfrost.io') \
+         RETURNING id",
+    )
+    .bind(tracked_address_id)
+    .bind(Uuid::new_v4().simple().to_string().repeat(2))
+    .bind("Ae2tdPwUPEZLs4HtbuNey7tK4hTKrwNwYtGqp7bDfCy2WdR3P6735W5Yfpe")
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
 async fn create_investigation(state: &ApiState, name: &str) -> Investigation {
     let body = serde_json::json!({"name": name});
     let body = body.to_string();

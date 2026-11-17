@@ -104,11 +104,7 @@ export function WalletFlowGraph({
       <div className="flow-snapshot-toolbar">
         <button
           className="button button-secondary"
-          disabled={
-            savingSnapshot ||
-            !hasGraphEvidence(graph) ||
-            !histories[0]
-          }
+          disabled={savingSnapshot || !hasGraphEvidence(graph) || !histories[0]}
           onClick={() =>
             onSaveSnapshot({
               title: `Investigation ${new Date().toLocaleString()}`,
@@ -210,7 +206,8 @@ export function WalletFlowGraph({
               <i className="edge-dot" /> Observed transfer
             </span>
             <span>
-              <i className="relationship-dot" /> Same transaction, direction unknown
+              <i className="relationship-dot" /> Same transaction, direction
+              unknown
             </span>
           </div>
           <div
@@ -261,7 +258,11 @@ export function WalletFlowGraph({
                       <path
                         className={`flow-edge-line ${edge.kind === "same_transaction" ? "is-relationship" : ""} ${isPathEdge ? "is-path" : pathAnalysis && edge.kind === "transfer" ? "is-dimmed" : ""}`}
                         d={`M ${from.x} ${from.y} Q ${midX} ${midY} ${to.x} ${to.y}`}
-                        markerEnd={edge.kind === "transfer" ? "url(#flow-arrow)" : undefined}
+                        markerEnd={
+                          edge.kind === "transfer"
+                            ? "url(#flow-arrow)"
+                            : undefined
+                        }
                         strokeWidth={Math.min(
                           1.4 + Math.log2(edge.transfers + 1),
                           4,

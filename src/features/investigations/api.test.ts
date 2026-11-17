@@ -40,13 +40,18 @@ afterEach(() => {
 
 describe("investigation API client", () => {
   it("loads Cardano transfers and participant evidence in one history response", async () => {
-    const cardanoAddress = { ...trackedAddress, network: "cardano", address: "addr1test" };
+    const cardanoAddress = {
+      ...trackedAddress,
+      network: "cardano",
+      address: "addr1test",
+    };
     const relationship = {
       id: "relationship-1",
       tracked_address_id: cardanoAddress.id,
       network: "cardano",
       transaction_hash: "a".repeat(64),
-      counterparty_address: "Ae2tdPwUPEZLs4HtbuNey7tK4hTKrwNwYtGqp7bDfCy2WdR3P6735W5Yfpe",
+      counterparty_address:
+        "Ae2tdPwUPEZLs4HtbuNey7tK4hTKrwNwYtGqp7bDfCy2WdR3P6735W5Yfpe",
       relationship_type: "same_transaction",
       participant_role: "input",
       block_height: 42,
@@ -56,12 +61,22 @@ describe("investigation API client", () => {
       source_host: "cardano-mainnet.blockfrost.io",
       observed_at: "2026-11-16T10:00:00Z",
     };
-    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ transfers: [], relationships: [relationship] }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ transfers: [], relationships: [relationship] }),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(listTrackedWalletHistories([cardanoAddress])).resolves.toEqual([
-      { address: cardanoAddress, transfers: [], relationships: [relationship] },
-    ]);
+    await expect(listTrackedWalletHistories([cardanoAddress])).resolves.toEqual(
+      [
+        {
+          address: cardanoAddress,
+          transfers: [],
+          relationships: [relationship],
+        },
+      ],
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       `http://127.0.0.1:8080/api/v1/investigations/${investigation.id}/addresses/${cardanoAddress.id}/history`,
       expect.objectContaining({ headers: {} }),

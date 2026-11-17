@@ -39,7 +39,8 @@ export type AddressDetection =
     }
   | {
       status: "ambiguous";
-      family: "EVM" | "Solana-compatible" | "Tron-compatible" | "Cardano-compatible";
+      family:
+        "EVM" | "Solana-compatible" | "Tron-compatible" | "Cardano-compatible";
       message: string;
     };
 
@@ -232,14 +233,20 @@ function isValidBech32WitnessAddress(address: string): boolean {
 }
 
 function isCardanoMainnetPaymentAddress(address: string): boolean {
-  if (address.length < 50 || address.length > 120 || address !== address.toLowerCase()) return false;
+  if (
+    address.length < 50 ||
+    address.length > 120 ||
+    address !== address.toLowerCase()
+  )
+    return false;
   const separator = address.lastIndexOf("1");
   if (separator !== 4 || address.slice(0, separator) !== "addr") return false;
   const encoded = [...address.slice(separator + 1)].map((character) =>
     BECH32_ALPHABET.indexOf(character),
   );
   if (encoded.length < 7 || encoded.some((value) => value < 0)) return false;
-  if (polymod([...expandHumanReadablePart("addr"), ...encoded]) !== BECH32) return false;
+  if (polymod([...expandHumanReadablePart("addr"), ...encoded]) !== BECH32)
+    return false;
   const data = encoded.slice(0, -6);
   let accumulator = 0;
   let bits = 0;
@@ -267,20 +274,25 @@ export async function detectAddressNetwork(
 
   if (address.startsWith("addr1")) {
     if (!isCardanoMainnetPaymentAddress(address)) {
-      return { status: "invalid", message: "Invalid Cardano mainnet payment address or checksum." };
+      return {
+        status: "invalid",
+        message: "Invalid Cardano mainnet payment address or checksum.",
+      };
     }
     return {
       status: "detected",
       network: "cardano",
       confidence: "format-and-checksum",
-      message: "Cardano mainnet payment address verified by format and checksum.",
+      message:
+        "Cardano mainnet payment address verified by format and checksum.",
     };
   }
   if (/^(Ae2|DdzFF)/.test(address)) {
     return {
       status: "ambiguous",
       family: "Cardano-compatible",
-      message: "This looks like a Cardano Byron address. Choose Cardano; the API will validate its checksum and network.",
+      message:
+        "This looks like a Cardano Byron address. Choose Cardano; the API will validate its checksum and network.",
     };
   }
 

@@ -46,37 +46,63 @@ function transfer(overrides: Record<string, unknown> = {}) {
 
 describe("wallet flow graph", () => {
   it("allows snapshots when either evidence source exists", () => {
-    expect(hasGraphEvidence({ sourceTransferIds: ["transfer"], sourceRelationshipIds: [] })).toBe(true);
-    expect(hasGraphEvidence({ sourceTransferIds: [], sourceRelationshipIds: ["relationship"] })).toBe(true);
-    expect(hasGraphEvidence({ sourceTransferIds: [], sourceRelationshipIds: [] })).toBe(false);
+    expect(
+      hasGraphEvidence({
+        sourceTransferIds: ["transfer"],
+        sourceRelationshipIds: [],
+      }),
+    ).toBe(true);
+    expect(
+      hasGraphEvidence({
+        sourceTransferIds: [],
+        sourceRelationshipIds: ["relationship"],
+      }),
+    ).toBe(true);
+    expect(
+      hasGraphEvidence({ sourceTransferIds: [], sourceRelationshipIds: [] }),
+    ).toBe(false);
   });
 
   it("shows Cardano same-transaction relations without adding path edges", () => {
     const history = {
-      address: { ...trackedAddress, network: "cardano", address: "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x" },
-      transfers: [],
-      relationships: [{
-        id: "relationship-1",
-        tracked_address_id: "wallet-1",
+      address: {
+        ...trackedAddress,
         network: "cardano",
-        transaction_hash: "a".repeat(64),
-        counterparty_address: "Ae2tdPwUPEZLs4HtbuNey7tK4hTKrwNwYtGqp7bDfCy2WdR3P6735W5Yfpe",
-        relationship_type: "same_transaction",
-        participant_role: "input",
-        block_height: 42,
-        block_time: "2026-11-16T10:00:00Z",
-        confirmed: true,
-        provider: "Blockfrost",
-        source_host: "cardano-mainnet.blockfrost.io",
-        observed_at: "2026-11-16T10:00:00Z",
-      }],
+        address:
+          "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x",
+      },
+      transfers: [],
+      relationships: [
+        {
+          id: "relationship-1",
+          tracked_address_id: "wallet-1",
+          network: "cardano",
+          transaction_hash: "a".repeat(64),
+          counterparty_address:
+            "Ae2tdPwUPEZLs4HtbuNey7tK4hTKrwNwYtGqp7bDfCy2WdR3P6735W5Yfpe",
+          relationship_type: "same_transaction",
+          participant_role: "input",
+          block_height: 42,
+          block_time: "2026-11-16T10:00:00Z",
+          confirmed: true,
+          provider: "Blockfrost",
+          source_host: "cardano-mainnet.blockfrost.io",
+          observed_at: "2026-11-16T10:00:00Z",
+        },
+      ],
     } as unknown as WalletHistory;
 
     const graph = buildWalletFlowGraph([history]);
     expect(graph.edges).toHaveLength(1);
-    expect(graph.edges[0]).toMatchObject({ kind: "same_transaction", transfers: 0, amount: "0" });
+    expect(graph.edges[0]).toMatchObject({
+      kind: "same_transaction",
+      transfers: 0,
+      amount: "0",
+    });
     expect(graph.sourceRelationshipIds).toEqual(["relationship-1"]);
-    expect(findObservedPaths(graph.edges, graph.edges[0].from, 3).paths).toEqual([]);
+    expect(
+      findObservedPaths(graph.edges, graph.edges[0].from, 3).paths,
+    ).toEqual([]);
   });
 
   it("prefills only untracked counterparty addresses", () => {
