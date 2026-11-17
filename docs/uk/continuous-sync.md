@@ -8,6 +8,14 @@
 
 Для кожної мережі API використовує перевірений HTTPS URL екземпляра Blockscout із `instance_url_from_config` або explorer, для якого явно вказано `hostedBy: blockscout`. API не надсилає запити на довільні адреси explorer-ів і не переходить за перенаправленнями. Якщо задано `BLOCKSCOUT_API_KEY`, використовується налаштований multichain API; користувацький `BLOCKSCOUT_BASE_URL` також перевизначає адресу джерела. `history_sync_available` означає, що маршрут провайдера налаштований, але доступність не перевірялася. Окремі explorer-и можуть обмежувати запити, блокувати автоматизацію, повертати HTML challenge або неповну історію; такі відповіді дають загальну помилку недоступності провайдера й не зберігаються як спостереження.
 
+## Історія Solana та покриття
+
+Вбудована мережа Solana використовує `SOLANA_RPC_URL`; за замовчуванням це `https://api.mainnet.solana.com`. Вкажи HTTPS RPC-провайдера, якому довіряєш або яким керуєш. HTTP дозволено лише для loopback-адрес під час локальної розробки. Каталог позначає маршрут як налаштований, але не перевіряє доступність провайдера й не гарантує зберігання архівної історії.
+
+Синхронізація викликає Solana JSON-RPC `getSignaturesForAddress` з рівнем `finalized`, потім отримує транзакцію через `getTransaction` із `jsonParsed` та `maxSupportedTransactionVersion: 1`. Один запуск обробляє не більше 15 підписів і зберігає окремі курсори для нових операцій та backfill. Зберігаються розібрані нативні SOL-події System Program `transfer` і `transferWithSeed`, а також SPL Token / Token-2022 `transfer` і `transferChecked` із зовнішніх та внутрішніх інструкцій. Власники SPL-рахунків визначаються за відповідними `preTokenBalances` / `postTokenBalances`; неоднозначні записи без даних про власника чи mint пропускаються. Початкові цілі суми зберігаються, decimals беруться з відповіді RPC, якщо вони наявні.
+
+Це не повний індекс Solana. `getSignaturesForAddress` повертає операції, де вказано запитаний публічний ключ; вхідні SPL-перекази можуть містити лише token account і тому не потрапити в історію власника. Інші програми (зокрема swaps, NFT та staking), історія виявлення/закриття token accounts і нестандартні інструкції не розбираються. Спільний публічний RPC може обмежувати чи блокувати запити; провайдер також може видаляти старі дані ledger. Для постійного чи архівного аналізу використовуй спеціалізованого archival/indexing-провайдера та перевір його покриття й умови. Див. офіційну документацію [`getSignaturesForAddress`](https://solana.com/docs/rpc/http/getsignaturesforaddress), [`getTransaction`](https://solana.com/docs/rpc/http/gettransaction) та [огляд RPC](https://solana.com/docs/rpc).
+
 ```bash
 docker compose up --build
 ```
