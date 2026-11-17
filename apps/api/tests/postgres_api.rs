@@ -202,7 +202,7 @@ async fn tron_trc20_events_in_one_transaction_remain_distinct(pool: PgPool) {
             "INSERT INTO observed_transfers \
              (tracked_address_id, network, transaction_hash, event_index, transfer_kind, direction, \
               received_amount, asset, token_contract_address, confirmed, provider, source_host) \
-             VALUES ($1, 'tron', 'aabbcc', $2, 'trc20', 'inbound', $3, 'USDT', $4, TRUE, 'TronGrid', 'api.trongrid.io')",
+             VALUES ($1, 'tron', 'aabbcc', $2, 'trc20', 'inbound', $3::numeric, 'USDT', $4, TRUE, 'TronGrid', 'api.trongrid.io')",
         )
         .bind(address_id)
         .bind(event_index)

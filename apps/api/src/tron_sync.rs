@@ -339,7 +339,7 @@ pub(crate) async fn sync_tracked_address(
              (tracked_address_id, network, transaction_hash, event_index, transfer_kind, direction, \
               received_amount, spent_amount, asset, token_contract_address, token_decimals, from_address, \
               to_address, block_height, block_time, confirmed, provider, source_host, observed_at) \
-             VALUES ($1, 'tron', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, TRUE, 'TronGrid', $15, $16) \
+             VALUES ($1, 'tron', $2, $3, $4, $5, $6::numeric, $7::numeric, $8, $9, $10, $11, $12, $13, $14, TRUE, 'TronGrid', $15, $16) \
              ON CONFLICT (tracked_address_id, transaction_hash, transfer_kind, event_index) \
              DO UPDATE SET direction = EXCLUDED.direction, received_amount = EXCLUDED.received_amount, \
               spent_amount = EXCLUDED.spent_amount, asset = EXCLUDED.asset, \
