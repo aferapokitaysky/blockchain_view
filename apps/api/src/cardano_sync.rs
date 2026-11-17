@@ -258,16 +258,21 @@ impl CardanoClient {
         order: &str,
         from: Option<String>,
     ) -> Result<Vec<AddressTransaction>, ApiError> {
-        self.get_json(
-            &format!("addresses/{address}/transactions"),
-            &[
-                ("count", PAGE_SIZE.to_string()),
-                ("page", page.to_string()),
-                ("order", order.to_owned()),
-                ("from", from.unwrap_or_default()),
-            ],
-        )
-        .await
+        let mut query = vec![
+            ("count", PAGE_SIZE.to_string()),
+            ("page", page.to_string()),
+            ("order", order.to_owned()),
+        ];
+        if let Some(from) = from {
+            query.push(("from", from));
+        }
+        let transactions: Vec<AddressTransaction> = self
+            .get_json(&format!("addresses/{address}/transactions"), &query)
+            .await?;
+        if transactions.len() > PAGE_SIZE as usize {
+            return Err(ApiError::ProviderUnavailable);
+        }
+        Ok(transactions)
     }
 
     async fn transaction_utxos(&self, hash: &str) -> Result<TransactionUtxos, ApiError> {
@@ -308,22 +313,20 @@ pub(crate) async fn sync_tracked_address(
         .unwrap_or((None, None, None, 1, false));
 
     // `from` включителен, поэтому ниже отбрасывается сама контрольная транзакция.
-    let head = if let (Some(height), Some(index)) = (cursor_height, cursor_index) {
-        state
+    let (head, head_page_full) = if let (Some(height), Some(index)) = (cursor_height, cursor_index)
+    {
+        let page = state
             .cardano
             .address_transactions(address, 1, "asc", Some(format!("{height}:{index}")))
-            .await?
-            .into_iter()
-            .filter(|transaction| {
-                (transaction.block_height, transaction.tx_index) > (height, index)
-            })
-            .take(PAGE_SIZE as usize)
-            .collect::<Vec<_>>()
+            .await?;
+        select_new_head_transactions(page, Some((height, index)))
     } else {
-        state
+        let page = state
             .cardano
             .address_transactions(address, 1, "desc", None)
-            .await?
+            .await?;
+        let page_full = page.len() == PAGE_SIZE as usize;
+        (page, page_full)
     };
     let backfill = if backfill_exhausted {
         Vec::new()
@@ -335,7 +338,10 @@ pub(crate) async fn sync_tracked_address(
     };
     let mut unique_transactions = BTreeMap::<String, AddressTransaction>::new();
     for transaction in head.iter().chain(&backfill) {
-        if !is_transaction_hash(&transaction.tx_hash) || transaction.block_height < 0 {
+        if !is_transaction_hash(&transaction.tx_hash)
+            || transaction.block_height < 0
+            || transaction.tx_index < 0
+        {
             return Err(ApiError::ProviderUnavailable);
         }
         unique_transactions
@@ -464,9 +470,19 @@ pub(crate) async fn sync_tracked_address(
         "INSERT INTO cardano_sync_cursors (tracked_address_id, newest_tx_hash, newest_block_height, newest_tx_index, next_backfill_page, backfill_exhausted) \
          VALUES ($1, $2, $3, $4, $5, $6) \
          ON CONFLICT (tracked_address_id) DO UPDATE SET \
-          newest_tx_hash = COALESCE(EXCLUDED.newest_tx_hash, cardano_sync_cursors.newest_tx_hash), \
-          newest_block_height = COALESCE(EXCLUDED.newest_block_height, cardano_sync_cursors.newest_block_height), \
-          newest_tx_index = COALESCE(EXCLUDED.newest_tx_index, cardano_sync_cursors.newest_tx_index), \
+          newest_tx_hash = CASE WHEN cardano_sync_cursors.newest_block_height IS NULL OR \
+            (EXCLUDED.newest_block_height, EXCLUDED.newest_tx_index) > \
+            (cardano_sync_cursors.newest_block_height, cardano_sync_cursors.newest_tx_index) \
+            THEN EXCLUDED.newest_tx_hash ELSE cardano_sync_cursors.newest_tx_hash END, \
+          newest_block_height = CASE WHEN cardano_sync_cursors.newest_block_height IS NULL OR \
+            (EXCLUDED.newest_block_height, EXCLUDED.newest_tx_index) > \
+            (cardano_sync_cursors.newest_block_height, cardano_sync_cursors.newest_tx_index) \
+            THEN EXCLUDED.newest_block_height ELSE cardano_sync_cursors.newest_block_height END, \
+          newest_tx_index = CASE WHEN cardano_sync_cursors.newest_block_height IS NULL OR \
+            EXCLUDED.newest_block_height > cardano_sync_cursors.newest_block_height \
+            OR (EXCLUDED.newest_block_height = cardano_sync_cursors.newest_block_height AND \
+            EXCLUDED.newest_tx_index > cardano_sync_cursors.newest_tx_index) \
+            THEN EXCLUDED.newest_tx_index ELSE cardano_sync_cursors.newest_tx_index END, \
           next_backfill_page = GREATEST(cardano_sync_cursors.next_backfill_page, EXCLUDED.next_backfill_page), \
           backfill_exhausted = cardano_sync_cursors.backfill_exhausted OR EXCLUDED.backfill_exhausted, \
           updated_at = now()",
@@ -486,9 +502,25 @@ pub(crate) async fn sync_tracked_address(
         fetched: unique_transactions.len(),
         saved,
         pages: 1 + usize::from(!backfill_exhausted),
-        may_have_more_history: head.len() == PAGE_SIZE as usize || backfill_page_full,
+        may_have_more_history: head_page_full || backfill_page_full,
         observed_at,
     })
+}
+
+fn select_new_head_transactions(
+    page: Vec<AddressTransaction>,
+    cursor: Option<(i64, i32)>,
+) -> (Vec<AddressTransaction>, bool) {
+    let page_full = page.len() == PAGE_SIZE as usize;
+    let transactions = page
+        .into_iter()
+        .filter(|transaction| {
+            cursor
+                .is_none_or(|position| (transaction.block_height, transaction.tx_index) > position)
+        })
+        .take(PAGE_SIZE as usize)
+        .collect();
+    (transactions, page_full)
 }
 
 fn parse_transaction(
@@ -699,6 +731,14 @@ fn is_transaction_hash(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{
+        Json, Router,
+        extract::{Query, State},
+        http::HeaderMap,
+        routing::get,
+    };
+    use serde_json::{Value, json};
+    use std::collections::HashMap;
 
     const TRACKED: &str = "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x";
     const OTHER: &str = "Ae2tdPwUPEZLs4HtbuNey7tK4hTKrwNwYtGqp7bDfCy2WdR3P6735W5Yfpe";
@@ -712,6 +752,15 @@ mod tests {
             }],
             collateral,
             reference,
+        }
+    }
+
+    fn utxo_with_assets(address: &str, amounts: Vec<AssetAmount>) -> TransactionUtxo {
+        TransactionUtxo {
+            address: address.to_owned(),
+            amount: amounts,
+            collateral: false,
+            reference: false,
         }
     }
 
@@ -754,6 +803,58 @@ mod tests {
         assert_eq!(parsed.relationships.len(), 1);
         assert_eq!(parsed.relationships[0].counterparty_address, OTHER);
         assert_eq!(parsed.relationships[0].participant_role, "input_and_output");
+    }
+
+    #[test]
+    fn extracts_tracked_native_asset_amounts_without_guessing_decimals() {
+        let policy_id = "ab".repeat(28);
+        let asset_id = format!("{policy_id}544f4b454e");
+        let parsed = parse_transaction(
+            transaction(
+                vec![utxo_with_assets(
+                    TRACKED,
+                    vec![
+                        AssetAmount {
+                            unit: "lovelace".into(),
+                            quantity: "2000000".into(),
+                        },
+                        AssetAmount {
+                            unit: asset_id.clone(),
+                            quantity: "100".into(),
+                        },
+                    ],
+                )],
+                vec![utxo_with_assets(
+                    TRACKED,
+                    vec![
+                        AssetAmount {
+                            unit: "lovelace".into(),
+                            quantity: "1500000".into(),
+                        },
+                        AssetAmount {
+                            unit: asset_id.clone(),
+                            quantity: "60".into(),
+                        },
+                    ],
+                )],
+            ),
+            TRACKED,
+            42,
+            DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+            None,
+        )
+        .unwrap();
+
+        let asset = parsed
+            .transfers
+            .iter()
+            .find(|transfer| transfer.asset_id.as_deref() == Some(asset_id.as_str()))
+            .unwrap();
+        assert_eq!(asset.transfer_kind, "cardano_asset");
+        assert_eq!(asset.spent_amount, "100");
+        assert_eq!(asset.received_amount, "60");
+        assert_eq!(asset.token_decimals, None);
+        assert_eq!(asset.asset, "TOKEN");
     }
 
     #[test]
@@ -809,5 +910,83 @@ mod tests {
             "cd".repeat(4)
         )));
         assert!(!is_valid_asset_unit("ab".repeat(27).as_str()));
+    }
+
+    #[test]
+    fn preserves_full_page_signal_after_removing_inclusive_cursor() {
+        let page = (0..PAGE_SIZE)
+            .map(|index| AddressTransaction {
+                tx_hash: format!("{:064x}", index + 1),
+                block_height: 100,
+                tx_index: index as i32,
+                block_time: 1_700_000_000,
+            })
+            .collect();
+        let (transactions, page_full) = select_new_head_transactions(page, Some((100, 0)));
+        assert!(page_full);
+        assert_eq!(transactions.len(), PAGE_SIZE as usize - 1);
+        assert_eq!(transactions[0].tx_index, 1);
+        assert_eq!(transactions.last().unwrap().tx_index, PAGE_SIZE as i32 - 1);
+    }
+
+    #[derive(Clone)]
+    struct RecordedRequest(Arc<Mutex<Option<RecordedRequestData>>>);
+
+    type RecordedRequestData = (String, HashMap<String, String>);
+
+    async fn mock_address_transactions(
+        State(recorded): State<RecordedRequest>,
+        headers: HeaderMap,
+        Query(query): Query<HashMap<String, String>>,
+    ) -> Json<Value> {
+        let project_id = headers
+            .get("project_id")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_owned();
+        *recorded.0.lock().await = Some((project_id, query));
+        Json(json!([{
+            "tx_hash": "a".repeat(64),
+            "tx_index": 3,
+            "block_height": 42,
+            "block_time": 1_700_000_000
+        }]))
+    }
+
+    #[tokio::test]
+    async fn provider_request_sends_project_header_and_omits_empty_from_cursor() {
+        let recorded = RecordedRequest(Arc::new(Mutex::new(None)));
+        let app = Router::new()
+            .route(
+                "/api/v0/addresses/{address}/transactions",
+                get(mock_address_transactions),
+            )
+            .with_state(recorded.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut client = CardanoClient::new(Some("test-project"), Client::new(), None).unwrap();
+        client.base_url = Url::parse(&format!("{base_url}/api/v0/")).unwrap();
+
+        let rows = client
+            .address_transactions(TRACKED, 1, "desc", None)
+            .await
+            .unwrap();
+        server.abort();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].tx_index, 3);
+        let (project_id, query) = recorded.0.lock().await.take().unwrap();
+        assert_eq!(project_id, "test-project");
+        assert_eq!(query.get("count").map(String::as_str), Some("20"));
+        assert!(!query.contains_key("from"));
+    }
+
+    #[tokio::test]
+    async fn reports_provider_availability_from_project_configuration() {
+        let client = CardanoClient::new(Some("test-project"), Client::new(), None).unwrap();
+        assert!(client.is_configured());
+        let unavailable = CardanoClient::new(None, Client::new(), None).unwrap();
+        assert!(!unavailable.is_configured());
     }
 }

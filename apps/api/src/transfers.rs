@@ -74,6 +74,29 @@ pub struct ObservedTransfer {
     pub observed_at: DateTime<Utc>,
 }
 
+#[derive(Debug, FromRow, Serialize)]
+pub struct ObservedRelationship {
+    pub id: Uuid,
+    pub tracked_address_id: Uuid,
+    pub network: String,
+    pub transaction_hash: String,
+    pub counterparty_address: String,
+    pub relationship_type: String,
+    pub participant_role: String,
+    pub block_height: Option<i64>,
+    pub block_time: Option<DateTime<Utc>>,
+    pub confirmed: bool,
+    pub provider: String,
+    pub source_host: String,
+    pub observed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WalletHistoryResponse {
+    pub transfers: Vec<ObservedTransfer>,
+    pub relationships: Vec<ObservedRelationship>,
+}
+
 #[derive(sqlx::FromRow)]
 struct AddressRow {
     network: String,
@@ -210,6 +233,45 @@ pub(crate) async fn list_address_transfers(
     .fetch_all(&state.database)
     .await?;
     Ok(Json(transfers))
+}
+
+pub(crate) async fn list_address_history(
+    State(state): State<ApiState>,
+    Path((investigation_id, address_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<WalletHistoryResponse>, ApiError> {
+    let exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM tracked_addresses WHERE id = $1 AND investigation_id = $2)",
+    )
+    .bind(address_id)
+    .bind(investigation_id)
+    .fetch_one(&state.database)
+    .await?;
+    if !exists {
+        return Err(ApiError::NotFound);
+    }
+    let transfers = sqlx::query_as::<_, ObservedTransfer>(
+        "SELECT id, tracked_address_id, network, transaction_hash, event_index, transfer_kind, direction, \
+         received_amount::text AS received_amount, spent_amount::text AS spent_amount, asset, \
+         token_contract_address, token_decimals, from_address, to_address, block_height, block_time, \
+         confirmed, provider, source_host, observed_at FROM observed_transfers WHERE tracked_address_id = $1 \
+         ORDER BY block_time DESC NULLS LAST, observed_at DESC LIMIT 500",
+    )
+    .bind(address_id)
+    .fetch_all(&state.database)
+    .await?;
+    let relationships = sqlx::query_as::<_, ObservedRelationship>(
+        "SELECT id, tracked_address_id, network, transaction_hash, counterparty_address, \
+         relationship_type, participant_role, block_height, block_time, confirmed, provider, \
+         source_host, observed_at FROM observed_relationships WHERE tracked_address_id = $1 \
+         ORDER BY block_time DESC NULLS LAST, observed_at DESC LIMIT 500",
+    )
+    .bind(address_id)
+    .fetch_all(&state.database)
+    .await?;
+    Ok(Json(WalletHistoryResponse {
+        transfers,
+        relationships,
+    }))
 }
 
 struct History {

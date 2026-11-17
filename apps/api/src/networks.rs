@@ -345,6 +345,9 @@ pub(crate) async fn list(
     if let Some(ton) = networks.iter_mut().find(|network| network.id == "ton") {
         ton.history_sync_available = state.ton_center.is_configured();
     }
+    if let Some(cardano) = networks.iter_mut().find(|network| network.id == "cardano") {
+        cardano.history_sync_available = state.cardano.is_configured();
+    }
     let history_sync_available = networks
         .iter()
         .any(|network| network.history_sync_available);

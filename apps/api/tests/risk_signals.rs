@@ -58,6 +58,11 @@ fn state(pool: PgPool) -> ApiState {
             reqwest::Client::new(),
         )
         .expect("тестовый TON Center URL должен разбираться"),
+        cardano: tracefold_api::cardano_sync::CardanoClient::from_env(
+            reqwest::Client::new(),
+            redis::Client::open("redis://127.0.0.1:1/").unwrap(),
+        )
+        .expect("тестовая конфигурация Cardano должна разбираться"),
     }
 }
 
