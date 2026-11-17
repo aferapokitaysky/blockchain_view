@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import type { WalletHistory } from "../investigations/api";
+import type { GraphSnapshot, WalletHistory } from "../investigations/api";
+import { isEvmNetworkId } from "../networks/networkCatalog";
 import {
   buildWalletFlowGraph,
   findObservedPaths,
@@ -10,7 +11,18 @@ import "./WalletFlowGraph.css";
 type WalletFlowGraphProps = {
   histories: WalletHistory[];
   networkNames?: Record<string, string>;
-  onTrackCounterparty: (network: string, address: string) => void;
+  onTrackCounterparty: (
+    network: string,
+    address: string,
+    investigationId: string,
+  ) => void;
+  snapshots: GraphSnapshot[];
+  openedSnapshot?: GraphSnapshot | null;
+  savingSnapshot: boolean;
+  onSaveSnapshot: (
+    snapshot: Omit<GraphSnapshot, "id" | "investigation_id" | "created_at">,
+  ) => void;
+  onOpenSnapshot: (snapshot: GraphSnapshot | null) => void;
 };
 
 function shortAddress(address: string): string {
@@ -21,10 +33,31 @@ export function WalletFlowGraph({
   histories,
   networkNames = {},
   onTrackCounterparty,
+  snapshots,
+  openedSnapshot = null,
+  savingSnapshot,
+  onSaveSnapshot,
+  onOpenSnapshot,
 }: WalletFlowGraphProps) {
-  const graph = useMemo(() => buildWalletFlowGraph(histories), [histories]);
-  const [selectedNode, setSelectedNode] = useState("");
-  const [maxDepth, setMaxDepth] = useState<1 | 2 | 3>(2);
+  const graph = useMemo(
+    () => openedSnapshot?.graph ?? buildWalletFlowGraph(histories),
+    [histories, openedSnapshot],
+  );
+  const snapshotFocusId =
+    openedSnapshot?.focus_network && openedSnapshot.focus_address
+      ? (openedSnapshot.graph.nodes.find(
+          (node) =>
+            node.network === openedSnapshot.focus_network &&
+            (isEvmNetworkId(node.network)
+              ? node.address.toLowerCase() ===
+                openedSnapshot.focus_address?.toLowerCase()
+              : node.address === openedSnapshot.focus_address),
+        )?.id ?? "")
+      : "";
+  const [selectedNode, setSelectedNode] = useState(snapshotFocusId);
+  const [maxDepth, setMaxDepth] = useState<1 | 2 | 3>(
+    openedSnapshot?.max_depth ?? 2,
+  );
   const focusedNode = graph.nodes.find((node) => node.id === selectedNode);
   const pathAnalysis = useMemo(
     () =>
@@ -56,14 +89,65 @@ export function WalletFlowGraph({
         <div>
           <h2 id="flow-graph-title">Wallet connections</h2>
           <p>
-            Direct EVM transfers from saved observations. Bitcoin counterpart
-            addresses are not available from address-level history.
+            Observed transfers from EVM, TRON, Solana and XRPL. Bitcoin
+            counterpart addresses are not available from address-level history.
           </p>
         </div>
         <div className="flow-graph-counts" aria-live="polite">
           <span>{graph.nodes.length} addresses</span>
           <span>{graph.edges.length} connections</span>
+          {openedSnapshot && <span>Opened: {openedSnapshot.title}</span>}
         </div>
+      </div>
+
+      <div className="flow-snapshot-toolbar">
+        <button
+          className="button button-secondary"
+          disabled={
+            savingSnapshot ||
+            graph.sourceTransferIds.length === 0 ||
+            !histories[0]
+          }
+          onClick={() =>
+            onSaveSnapshot({
+              title: `Investigation ${new Date().toLocaleString()}`,
+              focus_network: focusedNode?.network ?? null,
+              focus_address: focusedNode?.address ?? null,
+              max_depth: maxDepth,
+              source_transfer_ids: graph.sourceTransferIds,
+              graph,
+            })
+          }
+        >
+          {savingSnapshot ? "Saving snapshot…" : "Save graph snapshot"}
+        </button>
+        {snapshots.length > 0 && (
+          <label>
+            <span className="sr-only">Open saved investigation snapshot</span>
+            <select
+              value={openedSnapshot?.id ?? ""}
+              onChange={(event) => {
+                const selected = snapshots.find(
+                  (item) => item.id === event.target.value,
+                );
+                if (selected) onOpenSnapshot(selected);
+              }}
+            >
+              <option value="">Saved snapshots ({snapshots.length})</option>
+              {snapshots.map((snapshot) => (
+                <option key={snapshot.id} value={snapshot.id}>
+                  {snapshot.title} ·{" "}
+                  {new Date(snapshot.created_at).toLocaleDateString()}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {openedSnapshot && (
+          <button className="text-action" onClick={() => onOpenSnapshot(null)}>
+            Current graph
+          </button>
+        )}
       </div>
 
       <div className="flow-path-explorer">
@@ -106,8 +190,9 @@ export function WalletFlowGraph({
           <div>
             <strong>No direct links found</strong>
             <p>
-              Sync EVM wallet history to reveal transfers between addresses.
-              Bitcoin observations are not used to infer counterparties.
+              Sync supported wallet history to reveal transfers between
+              addresses. Bitcoin observations are not used to infer
+              counterparties.
             </p>
           </div>
         </div>
@@ -233,6 +318,7 @@ export function WalletFlowGraph({
                       onTrackCounterparty(
                         focusedCounterpartyPrefill.network,
                         focusedCounterpartyPrefill.address,
+                        histories[0]?.address.investigation_id ?? "",
                       )
                     }
                   >

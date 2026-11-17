@@ -3,9 +3,11 @@ import {
   checkApiHealth,
   listSupportedNetworks,
   listTrackedWallets,
+  listGraphSnapshots,
   listWalletHistory,
   listWalletRiskSignals,
   screenWalletAddress,
+  saveGraphSnapshot,
   syncWalletHistory,
   trackWallet,
 } from "./api";
@@ -140,6 +142,76 @@ describe("investigation API client", () => {
       status: 409,
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves Base58 case when tracking TRON addresses", async () => {
+    const tronAddress = "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([investigation]))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            ...trackedAddress,
+            network: "tron",
+            address: tronAddress,
+          },
+          201,
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await trackWallet({ network: "TRON", address: ` ${tronAddress} ` });
+
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      network: "tron",
+      address: tronAddress,
+    });
+  });
+
+  it("saves and lists graph snapshots within an investigation", async () => {
+    const graph = {
+      nodes: [],
+      edges: [],
+      truncated: false,
+      sourceTransferIds: ["event-1"],
+    };
+    const snapshot = {
+      id: "snapshot-1",
+      investigation_id: investigation.id,
+      title: "TRON flow",
+      focus_network: "tron",
+      focus_address: "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM",
+      max_depth: 2 as const,
+      source_transfer_ids: ["event-1"],
+      graph,
+      created_at: "2026-11-17T10:00:00Z",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(snapshot, 201))
+      .mockResolvedValueOnce(jsonResponse([snapshot]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      saveGraphSnapshot({
+        investigationId: investigation.id,
+        title: snapshot.title,
+        focusNetwork: snapshot.focus_network,
+        focusAddress: snapshot.focus_address,
+        maxDepth: snapshot.max_depth,
+        sourceTransferIds: snapshot.source_transfer_ids,
+        graph,
+      }),
+    ).resolves.toEqual(snapshot);
+    await expect(listGraphSnapshots(investigation.id)).resolves.toEqual([
+      snapshot,
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      focus_network: "tron",
+      focus_address: snapshot.focus_address,
+      source_transfer_ids: ["event-1"],
+    });
   });
 
   it("reports readiness only when the API and its data stores respond", async () => {
