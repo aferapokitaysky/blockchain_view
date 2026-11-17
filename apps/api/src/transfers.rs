@@ -105,6 +105,9 @@ pub(crate) async fn sync_tracked_address(
     if address.network == "solana" {
         return crate::solana_sync::sync_tracked_address(state, address_id, &address.address).await;
     }
+    if address.network == "tron" {
+        return crate::tron_sync::sync_tracked_address(state, address_id, &address.address).await;
+    }
 
     if address.network != "bitcoin" {
         let result = crate::evm_sync::sync_evm_address(

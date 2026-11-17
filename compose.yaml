@@ -43,6 +43,8 @@ services:
       BLOCKSCOUT_BASE_URL: ${BLOCKSCOUT_BASE_URL:-https://api.blockscout.com}
       BLOCKSCOUT_API_KEY: ${BLOCKSCOUT_API_KEY:-}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet.solana.com}
+      TRONGRID_BASE_URL: ${TRONGRID_BASE_URL:-https://api.trongrid.io}
+      TRONGRID_API_KEY: ${TRONGRID_API_KEY:-}
       RUST_LOG: info
     ports:
       - "127.0.0.1:${API_PORT:-8080}:8080"
@@ -65,6 +67,8 @@ services:
       BLOCKSCOUT_BASE_URL: ${BLOCKSCOUT_BASE_URL:-https://api.blockscout.com}
       BLOCKSCOUT_API_KEY: ${BLOCKSCOUT_API_KEY:-}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet.solana.com}
+      TRONGRID_BASE_URL: ${TRONGRID_BASE_URL:-https://api.trongrid.io}
+      TRONGRID_API_KEY: ${TRONGRID_API_KEY:-}
       RUST_LOG: info
     depends_on:
       postgres:

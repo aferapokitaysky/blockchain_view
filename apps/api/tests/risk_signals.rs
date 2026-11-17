@@ -39,6 +39,12 @@ fn state(pool: PgPool) -> ApiState {
             reqwest::Client::new(),
         )
         .expect("тестовый Blockscout URL должен разбираться"),
+        tron_grid: tracefold_api::tron_sync::TronGridClient::new(
+            "http://127.0.0.1:1",
+            None,
+            reqwest::Client::new(),
+        )
+        .expect("тестовый TronGrid URL должен разбираться"),
     }
 }
 

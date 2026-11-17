@@ -14,6 +14,7 @@ pub enum NetworkFamily {
     Evm,
     Utxo,
     Solana,
+    Tron,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -25,6 +26,8 @@ pub struct NetworkInfo {
     pub native_asset: String,
     pub explorer_url: Option<String>,
     pub history_sync_available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub history_coverage: Option<Vec<&'static str>>,
     #[serde(skip)]
     pub(crate) api_base_url: Option<Url>,
 }
@@ -127,6 +130,7 @@ pub(crate) fn parse_blockscout_config(
             native_asset: native_asset.to_owned(),
             explorer_url: chain_explorer_url,
             history_sync_available: api_base_url.is_some() || has_configured_universal_provider,
+            history_coverage: None,
             api_base_url,
         });
     }
@@ -163,6 +167,7 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             native_asset: "BTC".into(),
             explorer_url: Some("https://blockstream.info/".into()),
             history_sync_available: true,
+            history_coverage: None,
             api_base_url: None,
         },
         NetworkInfo {
@@ -173,6 +178,18 @@ pub(crate) fn fallback_catalog() -> Vec<NetworkInfo> {
             native_asset: "SOL".into(),
             explorer_url: Some("https://explorer.solana.com/".into()),
             history_sync_available: true,
+            history_coverage: None,
+            api_base_url: None,
+        },
+        NetworkInfo {
+            id: "tron".into(),
+            name: "TRON".into(),
+            family: NetworkFamily::Tron,
+            chain_id: None,
+            native_asset: "TRX".into(),
+            explorer_url: Some("https://tronscan.org/".into()),
+            history_sync_available: false,
+            history_coverage: Some(vec!["native-trx", "trc20"]),
             api_base_url: None,
         },
     ];
@@ -190,6 +207,7 @@ fn static_evm(id: &str, name: &str, chain_id: u64, asset: &str, url: &str) -> Ne
         native_asset: asset.into(),
         explorer_url: Some(url.into()),
         history_sync_available: api_base_url.is_some(),
+        history_coverage: None,
         api_base_url,
     }
 }
@@ -248,6 +266,9 @@ pub(crate) async fn list(
         solana.history_sync_available =
             crate::solana_sync::rpc_is_configured(&state.solana_rpc_url);
     }
+    if let Some(tron) = networks.iter_mut().find(|network| network.id == "tron") {
+        tron.history_sync_available = state.tron_grid.is_configured();
+    }
     let history_sync_available = networks
         .iter()
         .any(|network| network.history_sync_available);
@@ -275,7 +296,7 @@ mod tests {
         }"#;
 
         let networks = parse_blockscout_config(config, false).unwrap();
-        assert_eq!(networks.len(), 6); // Каталог включает Bitcoin и Solana fallback сети.
+        assert_eq!(networks.len(), 7); // Каталог включает четыре fallback-сети.
         let ethereum = networks
             .iter()
             .find(|network| network.chain_id == Some(1))
