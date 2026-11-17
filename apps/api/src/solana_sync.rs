@@ -10,7 +10,7 @@ use crate::{ApiState, error::ApiError, transfers::SyncResult};
 
 // Fifteen sequential transaction RPC calls fit within the frontend sync timeout.
 const SIGNATURE_PAGE_SIZE: usize = 15;
-const MAX_TRANSACTION_VERSION: u8 = 1;
+const MAX_TRANSACTION_VERSION: u8 = 0;
 
 #[derive(Debug, Deserialize)]
 struct RpcResponse<T> {
@@ -82,6 +82,7 @@ struct UiTokenAmount {
 
 #[derive(Debug, Deserialize)]
 struct InnerInstructionGroup {
+    index: usize,
     #[serde(default)]
     instructions: Vec<ParsedInstruction>,
 }
@@ -396,17 +397,20 @@ fn parse_supported_transfers(
         return Vec::new();
     }
     let token_accounts = token_account_metadata(transaction, meta);
-    let mut instructions = transaction
-        .transaction
-        .message
-        .instructions
-        .iter()
-        .collect::<Vec<_>>();
-    for group in &meta.inner_instructions {
-        instructions.extend(group.instructions.iter());
+    let outer_instructions = &transaction.transaction.message.instructions;
+    let mut ordered_instructions = Vec::new();
+    for (outer_index, instruction) in outer_instructions.iter().enumerate() {
+        ordered_instructions.push(instruction);
+        for group in meta
+            .inner_instructions
+            .iter()
+            .filter(|group| group.index == outer_index)
+        {
+            ordered_instructions.extend(group.instructions.iter());
+        }
     }
 
-    instructions
+    ordered_instructions
         .into_iter()
         .filter_map(|instruction| {
             parse_system_transfer(instruction, tracked_address)
@@ -638,7 +642,7 @@ mod tests {
     }
 
     #[test]
-    fn includes_inner_system_transfers_and_deduplicates_by_event_position() {
+    fn includes_inner_system_transfers() {
         let transaction: SolanaTransaction = serde_json::from_value(json!({
             "slot": 124,
             "blockTime": null,
@@ -656,6 +660,40 @@ mod tests {
         assert_eq!(transfers[0].transfer.direction, "inbound");
         assert_eq!(transfers[0].transfer.received_amount, 500_000_000);
         assert_eq!(transfers[0].transfer.event_index, 0);
+    }
+
+    #[test]
+    fn orders_inner_events_with_their_parent_instruction() {
+        let transaction: SolanaTransaction = serde_json::from_value(json!({
+            "slot": 124,
+            "transaction": { "message": { "instructions": [
+                { "program": "system", "parsed": { "type": "transfer", "info": {
+                    "source": TRACKED, "destination": "11111111111111111111111111111111", "lamports": 10
+                } } },
+                { "program": "system", "parsed": { "type": "transfer", "info": {
+                    "source": "11111111111111111111111111111111", "destination": TRACKED, "lamports": 30
+                } } }
+            ] } },
+            "meta": { "err": null, "innerInstructions": [{ "index": 0, "instructions": [
+                { "program": "system", "parsed": { "type": "transfer", "info": {
+                    "source": "11111111111111111111111111111111", "destination": TRACKED, "lamports": 20
+                } } }
+            ] }] }
+        }))
+        .unwrap();
+
+        let transfers = parse_supported_transfers(&transaction, "signature", TRACKED);
+        assert_eq!(transfers.len(), 3);
+        assert_eq!(transfers[0].transfer.spent_amount, 10);
+        assert_eq!(transfers[1].transfer.received_amount, 20);
+        assert_eq!(transfers[2].transfer.received_amount, 30);
+        assert_eq!(
+            transfers
+                .iter()
+                .map(|item| item.transfer.event_index)
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
     }
 
     #[test]
