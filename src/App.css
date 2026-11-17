@@ -664,6 +664,20 @@
   background: #111817;
   overflow: hidden;
 }
+.live-graph-region {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 17px;
+}
+.live-graph-region .flow-graph-panel,
+.live-graph-region .flow-graph-action {
+  margin: 0;
+}
+.live-graph-region > .flow-graph-empty {
+  border: 1px solid #2a3837;
+  border-radius: 9px;
+}
 .panel-heading {
   min-height: 59px;
   padding: 14px 16px 11px;
@@ -2554,6 +2568,9 @@ select.network-detected {
   .risk-panel {
     border-radius: 10px;
   }
+  .live-graph-region {
+    margin-bottom: 11px;
+  }
   .panel-heading {
     align-items: flex-start;
     gap: 10px;
@@ -2729,6 +2746,9 @@ select.network-detected {
     flex-direction: column;
     margin-inline: 11px;
   }
+  .live-graph-region .flow-graph-action {
+    margin-inline: 0;
+  }
   .flow-graph-action .button {
     width: 100%;
   }
@@ -2742,6 +2762,9 @@ select.network-detected {
   }
   .flow-graph-panel {
     margin-inline: 11px;
+  }
+  .live-graph-region .flow-graph-panel {
+    margin-inline: 0;
   }
   .flow-graph-head {
     flex-direction: column;

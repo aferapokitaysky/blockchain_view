@@ -13,26 +13,17 @@ import {
   Blocks,
   ChevronDown,
   CircleHelp,
-  Clock3,
-  Copy,
   Crosshair,
   ExternalLink,
-  Filter,
-  Focus,
   GitBranch,
-  Layers3,
-  Link2,
   Menu,
   MoreHorizontal,
   Plus,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
   Sparkles,
   Wallet,
   X,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 import { buildWalletAssessment } from "./features/risk/scoreWallet";
 import {
@@ -75,21 +66,14 @@ import {
   getTransferRiskPlaceholder,
 } from "./features/investigations/transactionFeed";
 import { syncCounterpartyImmediately } from "./features/investigations/syncCounterparty";
+import {
+  getActiveInvestigationData,
+  getDashboardSummary,
+} from "./features/overview/dashboardSummary";
 import "./App.css";
 
 type Network = string;
 const TRANSACTIONS_PER_PAGE = 50;
-type GraphNode = {
-  id: string;
-  address: string;
-  name: string;
-  network: Network;
-  x: number;
-  y: number;
-  balance: string;
-  tag?: string;
-  central?: boolean;
-};
 function safeExternalLink(reference: string | null): string | null {
   if (!reference) return null;
   try {
@@ -101,111 +85,6 @@ function safeExternalLink(reference: string | null): string | null {
     return null;
   }
 }
-const nodes: GraphNode[] = [
-  {
-    id: "seed",
-    address: "0x7a3d…4c91",
-    name: "Exchange wallet",
-    network: "Ethereum",
-    x: 502,
-    y: 258,
-    balance: "$2.84M",
-    tag: "Exchange",
-    central: true,
-  },
-  {
-    id: "north",
-    address: "0xb61c…8a20",
-    name: "Northstar",
-    network: "Ethereum",
-    x: 268,
-    y: 117,
-    balance: "$418.2K",
-    tag: "New",
-  },
-  {
-    id: "cove",
-    address: "bc1q…0f8j",
-    name: "Unlabeled wallet",
-    network: "Bitcoin",
-    x: 742,
-    y: 112,
-    balance: "$92.4K",
-  },
-  {
-    id: "orbit",
-    address: "0xe12a…11bf",
-    name: "Orbit Capital",
-    network: "Base",
-    x: 202,
-    y: 338,
-    balance: "$1.2M",
-    tag: "Fund",
-  },
-  {
-    id: "glacier",
-    address: "0x041f…2d7e",
-    name: "Glacier",
-    network: "Arbitrum",
-    x: 770,
-    y: 355,
-    balance: "$74.8K",
-  },
-  {
-    id: "cedar",
-    address: "0x69d1…9c34",
-    name: "Unlabeled wallet",
-    network: "Ethereum",
-    x: 428,
-    y: 74,
-    balance: "$16.1K",
-  },
-  {
-    id: "delta",
-    address: "bc1p…58m2",
-    name: "Delta desk",
-    network: "Bitcoin",
-    x: 875,
-    y: 227,
-    balance: "$310.6K",
-    tag: "Desk",
-  },
-  {
-    id: "lumen",
-    address: "0xabc2…a803",
-    name: "Lumen",
-    network: "Base",
-    x: 390,
-    y: 429,
-    balance: "$6.9K",
-  },
-  {
-    id: "harbor",
-    address: "0x8d91…e0c1",
-    name: "Harbor",
-    network: "Ethereum",
-    x: 640,
-    y: 444,
-    balance: "$238K",
-    tag: "Bridge",
-  },
-];
-
-const edges = [
-  ["seed", "north", "2.45 ETH"],
-  ["seed", "cove", "0.84 BTC"],
-  ["seed", "orbit", "18,200 USDC"],
-  ["seed", "glacier", "4.12 ETH"],
-  ["seed", "cedar", "0.68 ETH"],
-  ["seed", "delta", "3.2 BTC"],
-  ["seed", "lumen", "2,400 USDC"],
-  ["seed", "harbor", "6.8 ETH"],
-  ["north", "cedar", "0.21 ETH"],
-  ["orbit", "lumen", "850 USDC"],
-  ["glacier", "harbor", "1.04 ETH"],
-  ["cove", "delta", "0.13 BTC"],
-] as const;
-
 const networkMeta: Record<string, { color: string }> = {
   Ethereum: { color: "#a98cff" },
   ethereum: { color: "#a98cff" },
@@ -339,198 +218,10 @@ function NetworkMark({ network }: { network: Network }) {
   );
 }
 
-function TransferGraph({
-  selected,
-  onSelect,
-  zoom,
-}: {
-  selected: string;
-  onSelect: (id: string) => void;
-  zoom: number;
-}) {
-  const points = useMemo(
-    () => Object.fromEntries(nodes.map((node) => [node.id, node])),
-    [],
-  );
-  return (
-    <svg
-      className="flow-svg"
-      viewBox="0 0 1000 520"
-      role="img"
-      aria-label="Граф связей кошельков и переводов"
-    >
-      <defs>
-        <pattern
-          id="graph-grid"
-          width="24"
-          height="24"
-          patternUnits="userSpaceOnUse"
-        >
-          <circle cx="1" cy="1" r="1" fill="#26302f" />
-        </pattern>
-        <filter id="node-glow" x="-100%" y="-100%" width="300%" height="300%">
-          <feGaussianBlur stdDeviation="5" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-        <marker
-          id="arrow"
-          viewBox="0 0 10 10"
-          refX="8"
-          refY="5"
-          markerWidth="5"
-          markerHeight="5"
-          orient="auto-start-reverse"
-        >
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="#59d5ad" opacity=".8" />
-        </marker>
-      </defs>
-      <rect width="1000" height="520" fill="url(#graph-grid)" />
-      <g
-        className="graph-content"
-        style={{ transform: `scale(${zoom})`, transformOrigin: "50% 50%" }}
-      >
-        {edges.map(([from, to, amount], index) => {
-          const a = points[from],
-            b = points[to];
-          const curve =
-            index < 8
-              ? (a.y + b.y) / 2 + (a.x < b.x ? -12 : 18)
-              : (a.y + b.y) / 2 - 20;
-          const midX = (a.x + b.x) / 2;
-          return (
-            <g className="edge" key={`${from}-${to}`}>
-              <path
-                d={`M ${a.x} ${a.y} Q ${midX} ${curve} ${b.x} ${b.y}`}
-                markerEnd="url(#arrow)"
-              />
-              <circle className="edge-pulse" r="2.5">
-                <animateMotion
-                  dur={`${4 + (index % 3)}s`}
-                  repeatCount="indefinite"
-                  path={`M ${a.x} ${a.y} Q ${midX} ${curve} ${b.x} ${b.y}`}
-                />
-              </circle>
-              {index < 8 && (
-                <text x={midX} y={curve - 7} className="edge-label">
-                  {amount}
-                </text>
-              )}
-            </g>
-          );
-        })}
-        {nodes.map((node, index) => {
-          const active = selected === node.id;
-          const radius = node.central ? 28 : 20;
-          return (
-            <g
-              key={node.id}
-              className={`graph-node ${active ? "is-selected" : ""}`}
-              onClick={() => onSelect(node.id)}
-              role="button"
-              tabIndex={0}
-              aria-label={`${node.name}, ${node.network}`}
-              onKeyDown={(event) => event.key === "Enter" && onSelect(node.id)}
-            >
-              {node.central && (
-                <circle cx={node.x} cy={node.y} r="43" className="node-halo">
-                  <animate
-                    attributeName="r"
-                    values="39;47;39"
-                    dur="4s"
-                    repeatCount="indefinite"
-                  />
-                </circle>
-              )}
-              <circle
-                cx={node.x}
-                cy={node.y}
-                r={radius + 7}
-                className="node-ring"
-              />
-              <circle
-                cx={node.x}
-                cy={node.y}
-                r={radius}
-                className="node-core"
-                style={
-                  {
-                    "--node-color": networkColor(node.network),
-                  } as CSSProperties
-                }
-                filter={node.central ? "url(#node-glow)" : undefined}
-              />
-              <g
-                transform={`translate(${node.x - 12} ${node.y - 12})`}
-                className="node-mark"
-                style={
-                  {
-                    "--node-color": networkColor(node.network),
-                  } as CSSProperties
-                }
-              >
-                <NetworkShape network={node.network} />
-              </g>
-              <text
-                x={node.x}
-                y={node.y + radius + 19}
-                textAnchor="middle"
-                className="node-name"
-              >
-                {node.name}
-              </text>
-              <text
-                x={node.x}
-                y={node.y + radius + 34}
-                textAnchor="middle"
-                className="node-address"
-              >
-                {node.address}
-              </text>
-              {node.tag && (
-                <g>
-                  <rect
-                    x={node.x - 29}
-                    y={node.y - radius - 25}
-                    width="58"
-                    height="17"
-                    rx="8"
-                    className="node-tag"
-                  />
-                  <text
-                    x={node.x}
-                    y={node.y - radius - 13}
-                    textAnchor="middle"
-                    className="node-tag-text"
-                  >
-                    {node.tag}
-                  </text>
-                </g>
-              )}
-              {index === 0 && (
-                <circle
-                  cx={node.x + radius - 1}
-                  cy={node.y - radius + 1}
-                  r="4"
-                  className="node-live"
-                />
-              )}
-            </g>
-          );
-        })}
-      </g>
-    </svg>
-  );
-}
-
 function App() {
-  const [selected, setSelected] = useState("seed");
   const [activeNetwork, setActiveNetwork] = useState<"All networks" | Network>(
     "All networks",
   );
-  const [zoom, setZoom] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [query, setQuery] = useState("");
   const [walletLabel, setWalletLabel] = useState("");
@@ -563,9 +254,6 @@ function App() {
   const [historyRecords, setHistoryRecords] = useState<
     ObservedTransfer[] | null
   >(null);
-  const [flowHistories, setFlowHistories] = useState<WalletHistory[] | null>(
-    null,
-  );
   const [flowLoading, setFlowLoading] = useState(false);
   const [flowError, setFlowError] = useState("");
   const [flowSnapshots, setFlowSnapshots] = useState<GraphSnapshot[]>([]);
@@ -600,7 +288,6 @@ function App() {
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const [activityPage, setActivityPage] = useState(0);
   const [activeTab, setActiveTab] = useState("Overview");
-  const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[0];
   const networkNames = useMemo(
     () =>
       Object.fromEntries(
@@ -653,6 +340,38 @@ function App() {
   }, [trackedAddresses, networkCatalog.networks]);
   const selectedTrackedAddress = trackedAddresses.find(
     (address) => address.id === selectedAddressId,
+  );
+  const activeInvestigationData = useMemo(
+    () =>
+      getActiveInvestigationData(
+        trackedAddresses,
+        activityHistories,
+        selectedAddressId,
+      ),
+    [trackedAddresses, activityHistories, selectedAddressId],
+  );
+  const flowHistories =
+    activityStatus === "ready" ? activeInvestigationData.histories : null;
+  const visibleFlowSnapshots = useMemo(
+    () =>
+      flowSnapshots.filter(
+        ({ investigation_id }) =>
+          investigation_id === activeInvestigationData.investigationId,
+      ),
+    [flowSnapshots, activeInvestigationData.investigationId],
+  );
+  const activeFlowSnapshot =
+    openedFlowSnapshot?.investigation_id ===
+    activeInvestigationData.investigationId
+      ? openedFlowSnapshot
+      : null;
+  const dashboardSummary = useMemo(
+    () =>
+      getDashboardSummary(
+        activeInvestigationData.addresses,
+        activityStatus === "ready" ? activeInvestigationData.histories : [],
+      ),
+    [activeInvestigationData, activityStatus],
   );
   const walletRiskSignals =
     selectedTrackedAddress &&
@@ -907,17 +626,38 @@ function App() {
     trackedAddresses,
   ]);
 
+  useEffect(() => {
+    if (activityStatus !== "ready") return;
+
+    let isCurrent = true;
+    const { investigationId } = activeInvestigationData;
+    if (!investigationId) {
+      return;
+    }
+
+    void listGraphSnapshots(investigationId)
+      .then((snapshots) => {
+        if (!isCurrent) return;
+        setFlowSnapshots(snapshots);
+        setFlowError("");
+      })
+      .catch((error: unknown) => {
+        if (!isCurrent) return;
+        setFlowError(
+          error instanceof ApiRequestError
+            ? error.message
+            : "Could not load saved graph snapshots. Try again.",
+        );
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [activityStatus, activeInvestigationData]);
+
   const handleSearch = (value: string) => {
     setQuery(value);
     setNetworkChoice("");
     setFormError("");
-    if (!value) return;
-    const match = nodes.find((node) =>
-      `${node.address} ${node.name}`
-        .toLowerCase()
-        .includes(value.toLowerCase()),
-    );
-    if (match) setSelected(match.id);
   };
 
   const refreshInvestigationGraph = async (
@@ -931,7 +671,12 @@ function App() {
       listTrackedWalletHistories(investigationAddresses),
       listGraphSnapshots(investigationId),
     ]);
-    setFlowHistories(histories);
+    setActivityHistories((current) => [
+      ...current.filter(
+        (history) => history.address.investigation_id !== investigationId,
+      ),
+      ...histories,
+    ]);
     setFlowSnapshots(snapshots);
     setOpenedFlowSnapshot(null);
   };
@@ -1055,14 +800,13 @@ function App() {
       }
       setHistoryRecords(records);
       setActivityRefreshKey((revision) => revision + 1);
-      if (flowHistories) {
-        try {
-          await refreshInvestigationGraph(
-            selectedTrackedAddress.investigation_id,
-          );
-        } catch {
-          setFlowError("History synced, but the graph could not be refreshed.");
-        }
+      try {
+        await refreshInvestigationGraph(
+          selectedTrackedAddress.investigation_id,
+          trackedAddresses,
+        );
+      } catch {
+        setFlowError("History synced, but the graph could not be refreshed.");
       }
       const coverage = result.may_have_more_history
         ? " The provider page limit was reached; older history may be missing."
@@ -1083,9 +827,7 @@ function App() {
 
   const buildWalletConnections = async () => {
     if (flowLoading) return;
-    const investigationId =
-      selectedTrackedAddress?.investigation_id ??
-      trackedAddresses[0]?.investigation_id;
+    const investigationId = activeInvestigationData.investigationId;
     if (!investigationId) return;
     setFlowLoading(true);
     setFlowError("");
@@ -1105,7 +847,7 @@ function App() {
   const saveCurrentGraphSnapshot = async (
     input: Omit<GraphSnapshot, "id" | "investigation_id" | "created_at">,
   ) => {
-    const investigationId = flowHistories?.[0]?.address.investigation_id;
+    const investigationId = activeInvestigationData.investigationId;
     if (!investigationId || savingFlowSnapshot) return;
     setSavingFlowSnapshot(true);
     setFlowSnapshotError("");
@@ -1198,12 +940,6 @@ function App() {
     setWalletInvestigationId("");
     setTrackSource("manual");
     setShowAdd(true);
-  };
-
-  const copyAddress = async () => {
-    await navigator.clipboard?.writeText(selectedNode.address);
-    setNotice("Адрес скопирован");
-    window.setTimeout(() => setNotice(""), 2400);
   };
 
   return (
@@ -1348,11 +1084,14 @@ function App() {
           <div className="page-heading">
             <div>
               <div className="eyebrow">
-                <span className="eyebrow-dot demo-dot" />
-                Demo investigation
+                <span className="eyebrow-dot" />
+                Investigation
               </div>
-              <h1>Wallet flow overview</h1>
-              <p>Track how value moves across addresses and networks.</p>
+              <h1>Address flow overview</h1>
+              <p>
+                Review observed transfers and participant links from saved
+                addresses.
+              </p>
             </div>
             <div className="heading-actions">
               <button className="button button-primary" onClick={openAddWallet}>
@@ -1360,238 +1099,169 @@ function App() {
               </button>
             </div>
           </div>
-          <section className="stats-grid" aria-label="Сводка расследования">
+          <section className="stats-grid" aria-label="Investigation summary">
             <article className="stat-card">
               <div className="stat-label">
-                Tracked wallets <Wallet size={15} />
+                Tracked addresses <Wallet size={15} />
               </div>
               <div className="stat-value">
-                {nodes.length}
-                <span className="stat-change positive">
-                  <Sparkles size={12} /> +3 today
-                </span>
+                {addressesLoading ? "—" : dashboardSummary.trackedAddresses}
               </div>
               <div className="stat-foot">
-                <span className="stat-bars">
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </span>
-                <span>Across 4 networks</span>
+                <span>Saved in this investigation</span>
               </div>
             </article>
             <article className="stat-card">
               <div className="stat-label">
-                Connected flows <GitBranch size={15} />
+                Networks <Blocks size={15} />
               </div>
               <div className="stat-value">
-                24<span className="stat-change positive">+12.8%</span>
+                {addressesLoading ? "—" : dashboardSummary.networks}
               </div>
               <div className="stat-foot">
-                <span className="mini-line">
-                  <i />
-                </span>
-                <span>vs. previous 7 days</span>
+                <span>Represented by saved addresses</span>
               </div>
             </article>
             <article className="stat-card">
               <div className="stat-label">
-                Total volume <Layers3 size={15} />
+                Transactions observed <Activity size={15} />
               </div>
               <div className="stat-value">
-                $4.82M<span className="stat-change positive">+8.2%</span>
-              </div>
-              <div className="stat-foot">
-                <span className="mini-line blue">
-                  <i />
-                </span>
-                <span>Across tracked wallets</span>
-              </div>
-            </article>
-            <article className="stat-card stat-signal">
-              <div className="stat-label">
-                Selected wallet risk <Crosshair size={15} />
-              </div>
-              <div className="stat-value">
-                {selectedTrackedAddress &&
-                !riskSignalsLoading &&
-                !riskSignalsError
-                  ? walletAssessment.score
+                {activityStatus === "ready"
+                  ? dashboardSummary.transactions
                   : "—"}
-                {selectedTrackedAddress &&
-                  !riskSignalsLoading &&
-                  !riskSignalsError && (
-                    <>
-                      <small className="score-suffix">/100</small>
-                      <span className="signal-label">
-                        <i /> {walletAssessment.level}
-                      </span>
-                    </>
-                  )}
               </div>
               <div className="stat-foot">
-                <span>
-                  {riskSignalsLoading
-                    ? "Loading selected wallet evidence"
-                    : riskSignalsError
-                      ? "Evidence could not be loaded"
-                      : selectedTrackedAddress
-                        ? `${walletAssessment.contributions.length} evidence records · model ${walletAssessment.modelVersion}`
-                        : "Select a saved wallet to view its score"}
-                </span>
-                <button
-                  aria-label="Подробнее о сигналах риска"
-                  onClick={() =>
-                    document
-                      .getElementById("risk-signals")
-                      ?.scrollIntoView({ behavior: "smooth" })
-                  }
-                >
-                  <ExternalLink size={13} />
-                </button>
+                <span>Unique transaction hashes in saved history</span>
+              </div>
+            </article>
+            <article className="stat-card">
+              <div className="stat-label">
+                Connections <GitBranch size={15} />
+              </div>
+              <div className="stat-value">
+                {activityStatus === "ready"
+                  ? dashboardSummary.connections
+                  : "—"}
+              </div>
+              <div className="stat-foot">
+                <span>Observed links in the current graph</span>
               </div>
             </article>
           </section>
 
-          <section className="graph-panel" aria-label="Карта переводов">
-            <div className="panel-heading">
-              <div>
-                <h2>Address connections</h2>
-                <p>Follow funds between wallets across chains</p>
+          <section
+            className="live-graph-region"
+            aria-label="Wallet connections"
+          >
+            {activityStatus === "loading" || apiStatus === "checking" ? (
+              <div className="address-state" role="status">
+                Loading saved addresses and transaction history…
               </div>
-              <div className="graph-actions">
+            ) : activityStatus === "error" ? (
+              <div className="address-state address-error" role="alert">
+                <span>{activityError}</span>
                 <button
-                  className="select-control"
+                  className="text-action"
                   onClick={() =>
-                    setActiveNetwork(
-                      activeNetwork === "All networks"
-                        ? "ethereum"
-                        : "All networks",
-                    )
+                    setActivityRefreshKey((revision) => revision + 1)
                   }
+                  disabled={apiStatus !== "online"}
                 >
-                  <Blocks size={15} />
-                  {activeNetwork === "All networks"
-                    ? activeNetwork
-                    : getNetworkName(activeNetwork, networkCatalog.networks)}
-                  <ChevronDown size={14} />
-                </button>
-                <button className="select-control time-control">
-                  <Clock3 size={15} />
-                  Last 30 days
-                  <ChevronDown size={14} />
-                </button>
-                <button
-                  className="square-control"
-                  aria-label="Фильтры"
-                  onClick={() =>
-                    setNotice("Фильтр: входящие и исходящие переводы")
-                  }
-                >
-                  <SlidersHorizontal size={16} />
-                </button>
-                <button
-                  className="square-control"
-                  aria-label="Другие действия"
-                  onClick={() => setNotice("Настройки графа сохранены")}
-                >
-                  <MoreHorizontal size={17} />
+                  Retry
                 </button>
               </div>
-            </div>
-            <div className="graph-legend">
-              <span>
-                <i className="legend-flow" /> Transaction flow
-              </span>
-              <span>
-                <i className="legend-center" /> Starting address
-              </span>
-              <span>
-                <i className="legend-alert" /> Flagged wallet
-              </span>
-              <button
-                onClick={() => setNotice("Уровень 1: ближайшие контрагенты")}
-              >
-                <Filter size={13} /> 1 hop
-              </button>
-            </div>
-            <div className="graph-canvas">
-              <TransferGraph
-                selected={selected}
-                onSelect={setSelected}
-                zoom={zoom}
-              />
-              <div className="graph-toolbar">
-                <button
-                  aria-label="Уменьшить"
-                  onClick={() => setZoom(Math.max(0.7, zoom - 0.1))}
-                >
-                  <ZoomOut size={15} />
-                </button>
-                <span>{Math.round(zoom * 100)}%</span>
-                <button
-                  aria-label="Увеличить"
-                  onClick={() => setZoom(Math.min(1.4, zoom + 0.1))}
-                >
-                  <ZoomIn size={15} />
-                </button>
-                <i />
-                <button aria-label="Вписать в экран" onClick={() => setZoom(1)}>
-                  <Focus size={15} />
-                </button>
-              </div>
-              <button
-                className="expand-button"
-                aria-label="Расширить граф"
-                onClick={() => setNotice("Граф масштабирован под экран")}
-              >
-                <Focus size={15} />
-              </button>
-              <div className="graph-attribution">
-                Sample graph <span>·</span> No live updates
-              </div>
-            </div>
-            <div className="graph-footer">
-              <div>
-                <span className="footer-icon">
-                  <Link2 size={14} />
+            ) : trackedAddresses.length === 0 ? (
+              <div className="flow-graph-empty">
+                <span className="flow-graph-empty-mark" aria-hidden="true">
+                  <NetworkMark network="ethereum" />
                 </span>
-                <span>
-                  <b>{selectedNode.name}</b>
-                  <small>
-                    {selectedNode.address}{" "}
+                <div>
+                  <strong>No addresses in this investigation</strong>
+                  <p>
+                    Add a public wallet address, then sync its history to start
+                    mapping observed connections.
+                  </p>
+                </div>
+                <button
+                  className="button button-primary"
+                  onClick={openAddWallet}
+                >
+                  <Plus size={16} /> Add wallet
+                </button>
+              </div>
+            ) : flowHistories ? (
+              <>
+                <WalletFlowGraph
+                  key={`${activeInvestigationData.investigationId}:${activeFlowSnapshot?.id ?? "live"}`}
+                  histories={flowHistories}
+                  networkNames={networkNames}
+                  snapshots={visibleFlowSnapshots}
+                  openedSnapshot={activeFlowSnapshot}
+                  savingSnapshot={savingFlowSnapshot}
+                  onSaveSnapshot={(snapshot) =>
+                    void saveCurrentGraphSnapshot(snapshot)
+                  }
+                  onOpenSnapshot={setOpenedFlowSnapshot}
+                  onTrackCounterparty={(network, address, investigationId) => {
+                    setQuery(address);
+                    setNetworkChoice(network);
+                    setWalletLabel("");
+                    setWalletInvestigationId(investigationId);
+                    setTrackSource("counterparty");
+                    setFormError("");
+                    setShowAdd(true);
+                  }}
+                />
+                {dashboardSummary.connections === 0 &&
+                  selectedTrackedAddress && (
+                    <div className="flow-graph-action">
+                      <div>
+                        <strong>History is saved per address</strong>
+                        <p>
+                          Sync the selected wallet to load provider
+                          observations. Some networks expose participants
+                          without a direct sender or recipient.
+                        </p>
+                      </div>
+                      <button
+                        className="button button-secondary"
+                        onClick={() => void syncSavedAddress()}
+                        disabled={isSyncing || apiStatus !== "online"}
+                      >
+                        {isSyncing
+                          ? "Syncing history…"
+                          : "Sync selected wallet"}
+                      </button>
+                    </div>
+                  )}
+                {flowLoading && (
+                  <div className="address-state" role="status">
+                    Refreshing graph evidence…
+                  </div>
+                )}
+                {flowError && (
+                  <div className="address-state address-error" role="alert">
+                    <span>{flowError}</span>
                     <button
-                      aria-label="Скопировать адрес"
-                      onClick={copyAddress}
+                      className="text-action"
+                      onClick={() => void buildWalletConnections()}
                     >
-                      <Copy size={11} />
+                      Retry
                     </button>
-                  </small>
-                </span>
-                <NetworkMark network={selectedNode.network} />
-                <span className="footer-balance">
-                  {selectedNode.balance}
-                  <small>Balance</small>
-                </span>
+                  </div>
+                )}
+                {flowSnapshotError && (
+                  <div className="address-state address-error" role="alert">
+                    {flowSnapshotError}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="address-state" role="status">
+                Loading saved graph evidence…
               </div>
-              <button
-                className="text-action"
-                onClick={() =>
-                  setNotice(`Открыта карточка ${selectedNode.address}`)
-                }
-              >
-                View details <ExternalLink size={13} />
-              </button>
-            </div>
+            )}
           </section>
 
           <section className="risk-panel" id="risk-signals">
@@ -1988,65 +1658,6 @@ function App() {
                   </div>
                 ))}
                 <p>{screeningResult.explanation}</p>
-              </div>
-            )}
-            <div className="flow-graph-action">
-              <div>
-                <strong>Trace direct wallet links</strong>
-                <p>
-                  Loads saved history for the selected investigation and links
-                  observed senders and recipients across supported networks.
-                </p>
-              </div>
-              <button
-                className="button button-secondary"
-                onClick={() => void buildWalletConnections()}
-                disabled={
-                  flowLoading ||
-                  addressesLoading ||
-                  trackedAddresses.length === 0
-                }
-              >
-                {flowLoading ? "Loading histories…" : "Build transfer links"}
-              </button>
-            </div>
-            {flowError && (
-              <div className="address-state address-error" role="alert">
-                <span>{flowError}</span>
-                <button
-                  className="text-action"
-                  onClick={() => void buildWalletConnections()}
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-            {flowHistories && (
-              <WalletFlowGraph
-                key={openedFlowSnapshot?.id ?? "live-graph"}
-                histories={flowHistories}
-                networkNames={networkNames}
-                snapshots={flowSnapshots}
-                openedSnapshot={openedFlowSnapshot}
-                savingSnapshot={savingFlowSnapshot}
-                onSaveSnapshot={(snapshot) =>
-                  void saveCurrentGraphSnapshot(snapshot)
-                }
-                onOpenSnapshot={setOpenedFlowSnapshot}
-                onTrackCounterparty={(network, address, investigationId) => {
-                  setQuery(address);
-                  setNetworkChoice(network);
-                  setWalletLabel("");
-                  setWalletInvestigationId(investigationId);
-                  setTrackSource("counterparty");
-                  setFormError("");
-                  setShowAdd(true);
-                }}
-              />
-            )}
-            {flowSnapshotError && (
-              <div className="address-state address-error" role="alert">
-                {flowSnapshotError}
               </div>
             )}
           </section>
