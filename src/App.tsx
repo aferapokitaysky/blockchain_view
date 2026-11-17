@@ -74,6 +74,7 @@ import {
   formatFeedTime,
   getTransferRiskPlaceholder,
 } from "./features/investigations/transactionFeed";
+import { syncCounterpartyImmediately } from "./features/investigations/syncCounterparty";
 import "./App.css";
 
 type Network = string;
@@ -563,6 +564,9 @@ function App() {
   const [savingFlowSnapshot, setSavingFlowSnapshot] = useState(false);
   const [flowSnapshotError, setFlowSnapshotError] = useState("");
   const [walletInvestigationId, setWalletInvestigationId] = useState("");
+  const [trackSource, setTrackSource] = useState<"manual" | "counterparty">(
+    "manual",
+  );
   const [screeningLoading, setScreeningLoading] = useState(false);
   const [screeningError, setScreeningError] = useState("");
   const [screeningResult, setScreeningResult] =
@@ -932,6 +936,8 @@ function App() {
 
     setFormError("");
     setIsSubmitting(true);
+    const shouldSyncCounterparty =
+      trackSource === "counterparty" && Boolean(walletInvestigationId);
     try {
       const trackedAddress = await trackWallet({
         network,
@@ -954,8 +960,48 @@ function App() {
       setWalletLabel("");
       setNetworkChoice("");
       setWalletInvestigationId("");
-      setNotice(`Wallet saved to ${network}. History can be synced on demand.`);
-      if (flowHistories && walletInvestigationId) {
+      setTrackSource("manual");
+      if (shouldSyncCounterparty) {
+        setIsSyncing(true);
+        setHistoryError("");
+        setNotice(`Wallet saved to ${network}. Syncing its history…`);
+        const outcome = await syncCounterpartyImmediately(
+          trackedAddress,
+          syncWalletHistory,
+          async (investigationId) => {
+            setActivityRefreshKey((revision) => revision + 1);
+            await refreshInvestigationGraph(investigationId, nextAddresses);
+          },
+        );
+        if (outcome.status === "sync_failed") {
+          setHistoryError(
+            outcome.error instanceof ApiRequestError
+              ? outcome.error.message
+              : "Could not sync this address yet. Use Sync wallet history to retry.",
+          );
+          setNotice(
+            `Wallet saved to ${network}; history sync failed. The address remains in the investigation.`,
+          );
+        } else if (outcome.status === "graph_refresh_failed") {
+          setFlowError("History synced, but the graph could not be refreshed.");
+          setNotice(
+            `Wallet saved and history synced from ${outcome.sync.provider}. Reload the graph to continue.`,
+          );
+        } else {
+          const coverage = outcome.sync.may_have_more_history
+            ? " Older history may need another sync."
+            : "";
+          setNotice(
+            `Wallet saved. Loaded ${outcome.sync.fetched} observations from ${outcome.sync.provider}.${coverage}`,
+          );
+        }
+        setIsSyncing(false);
+      } else {
+        setNotice(
+          `Wallet saved to ${network}. History can be synced on demand.`,
+        );
+      }
+      if (!shouldSyncCounterparty && flowHistories && walletInvestigationId) {
         try {
           await refreshInvestigationGraph(walletInvestigationId, nextAddresses);
         } catch {
@@ -1131,6 +1177,7 @@ function App() {
     setNetworkChoice("");
     setFormError("");
     setWalletInvestigationId("");
+    setTrackSource("manual");
     setShowAdd(true);
   };
 
@@ -1972,6 +2019,7 @@ function App() {
                   setNetworkChoice(network);
                   setWalletLabel("");
                   setWalletInvestigationId(investigationId);
+                  setTrackSource("counterparty");
                   setFormError("");
                   setShowAdd(true);
                 }}
