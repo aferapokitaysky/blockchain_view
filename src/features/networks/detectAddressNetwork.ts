@@ -215,13 +215,17 @@ export async function detectAddressNetwork(
   if (address.startsWith("X")) {
     return {
       status: "unsupported",
-      message: "X-addresses are not supported. Use a classic XRP Ledger address.",
+      message:
+        "X-addresses are not supported. Use a classic XRP Ledger address.",
     };
   }
 
   if (/^r/.test(address)) {
     if (!(await isValidXrplClassicAddress(address))) {
-      return { status: "invalid", message: "Invalid XRP Ledger classic address or checksum." };
+      return {
+        status: "invalid",
+        message: "Invalid XRP Ledger classic address or checksum.",
+      };
     }
     return {
       status: "detected",

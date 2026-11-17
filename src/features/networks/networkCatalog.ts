@@ -1,8 +1,6 @@
 export type NetworkFamily = "evm" | "utxo" | "solana" | "tron" | "xrpl";
 export type NetworkHistoryCapability =
-  | "native-trx"
-  | "trc20"
-  | "xrp-direct-payment";
+  "native-trx" | "trc20" | "xrp-direct-payment";
 
 export type NetworkCatalogEntry = {
   id: string;
