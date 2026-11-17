@@ -389,7 +389,7 @@ async fn sync_native_stream(
     let head_was_initial = newest_lt.is_none();
     let mut head_events = parse_native_events(&head, address);
     let head_newest = latest_native_lt(&head).or(newest_lt);
-    let head_progress = StreamSync {
+    let mut head_progress = StreamSync {
         events: Vec::new(),
         newest_lt: head_newest,
         backfill_end_lt,
@@ -449,7 +449,7 @@ async fn sync_jetton_stream(
     let head_was_initial = newest_lt.is_none();
     let head_events = parse_jetton_events(&head, address);
     let head_newest = latest_jetton_lt(&head).or(newest_lt);
-    let mut head_progress = StreamSync {
+    let head_progress = StreamSync {
         events: head_events,
         newest_lt: head_newest,
         backfill_end_lt,
@@ -519,7 +519,7 @@ fn parse_native_events(rows: &[Value], tracked_address: &str) -> Vec<NativeTrans
         }
         if let Some(inbound) = transaction.get("in_msg") {
             if let Some(event) =
-                native_message_event(inbound, tracked_address, hash, lt, -1, time, block_height)
+                native_message_event(inbound, tracked_address, hash, -1, time, block_height)
             {
                 events.push(event);
             }
@@ -532,15 +532,9 @@ fn parse_native_events(rows: &[Value], tracked_address: &str) -> Vec<NativeTrans
                 else {
                     continue;
                 };
-                if let Some(event) = native_message_event(
-                    outbound,
-                    tracked_address,
-                    hash,
-                    lt,
-                    index,
-                    time,
-                    block_height,
-                ) {
+                if let Some(event) =
+                    native_message_event(outbound, tracked_address, hash, index, time, block_height)
+                {
                     events.push(event);
                 }
             }
@@ -553,7 +547,6 @@ fn native_message_event(
     message: &Value,
     tracked_address: &str,
     hash: &str,
-    lt: i64,
     event_index: i64,
     block_time: Option<DateTime<Utc>>,
     block_height: Option<i64>,
