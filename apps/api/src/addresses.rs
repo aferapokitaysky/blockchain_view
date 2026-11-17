@@ -21,6 +21,7 @@ pub enum Network {
     Base,
     Arbitrum,
     Tron,
+    Xrpl,
 }
 
 impl Network {
@@ -29,6 +30,7 @@ impl Network {
         match self {
             Self::Ethereum | Self::Base | Self::Arbitrum => normalize_evm_address(value),
             Self::Tron => normalize_tron_address(value),
+            Self::Xrpl => normalize_xrpl_address(value),
             Self::Bitcoin => {
                 let parsed = BitcoinAddress::from_str(value)
                     .map_err(|_| ApiError::Validation("Неверный формат адреса Bitcoin"))?;

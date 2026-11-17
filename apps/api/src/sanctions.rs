@@ -262,6 +262,8 @@ pub async fn screen_address(
     let (address, currency) = match network.as_str() {
         "bitcoin" => (Network::Bitcoin.normalize(&query.address)?, Some("XBT")),
         "ethereum" => (normalize_evm_address(&query.address)?, Some("ETH")),
+        "tron" => (Network::Tron.normalize(&query.address)?, Some("TRX")),
+        "xrpl" => (Network::Xrpl.normalize(&query.address)?, Some("XRP")),
         "base" | "arbitrum" => (normalize_evm_address(&query.address)?, None),
         _ if catalog_entry.family == NetworkFamily::Evm => {
             (normalize_evm_address(&query.address)?, None)
@@ -275,7 +277,7 @@ pub async fn screen_address(
             match_type: "exact_address",
             source: None,
             matches: Vec::new(),
-            explanation: "OFAC currency identifiers are mapped only for Bitcoin (XBT) and Ethereum (ETH); no conclusion is made for this network.",
+            explanation: "OFAC currency identifiers are mapped only for Bitcoin (XBT), Ethereum (ETH), TRON (TRX), and XRP Ledger (XRP); no conclusion is made for this network.",
         }));
     };
 
@@ -340,7 +342,9 @@ mod tests {
     <idList>
       <id><uid>1</uid><idType>Digital Currency Address - ETH</idType><idNumber>0xAbCd000000000000000000000000000000000001</idNumber><idCountry/></id>
       <id><uid>2</uid><idType>Digital Currency Address - XBT</idType><idNumber>bc1qexample</idNumber><idCountry/></id>
-      <id><uid>3</uid><idType>Passport</idType><idNumber>PUBLIC-IDENTIFIER</idNumber><idCountry>US</idCountry></id>
+      <id><uid>3</uid><idType>Digital Currency Address - TRX</idType><idNumber>TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM</idNumber><idCountry/></id>
+      <id><uid>4</uid><idType>Digital Currency Address - XRP</idType><idNumber>rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh</idNumber><idCountry/></id>
+      <id><uid>5</uid><idType>Passport</idType><idNumber>PUBLIC-IDENTIFIER</idNumber><idCountry>US</idCountry></id>
     </idList>
   </sdnEntry>
 </sdnList>"#;
@@ -350,7 +354,7 @@ mod tests {
         let snapshot = parse_ofac_sdn_xml(SDN_FIXTURE).expect("fixture should parse");
 
         assert_eq!(snapshot.published_at, "11/12/2026 01:00:00 PM");
-        assert_eq!(snapshot.addresses.len(), 2);
+        assert_eq!(snapshot.addresses.len(), 4);
         assert_eq!(snapshot.addresses[0].entity_uid, "12345");
         assert_eq!(snapshot.addresses[0].entity_name, "Example Exchange");
         assert_eq!(snapshot.addresses[0].programs, ["TEST-PROGRAM"]);
@@ -361,13 +365,25 @@ mod tests {
         );
         assert_eq!(snapshot.addresses[1].currency_code, "XBT");
         assert_eq!(snapshot.addresses[1].address_normalized, "bc1qexample");
+        assert_eq!(snapshot.addresses[2].currency_code, "TRX");
+        assert_eq!(
+            snapshot.addresses[2].address_normalized,
+            "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM"
+        );
+        assert_eq!(snapshot.addresses[3].currency_code, "XRP");
+        assert_eq!(
+            snapshot.addresses[3].address_normalized,
+            "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+        );
     }
 
     #[test]
     fn rejects_a_valid_xml_document_without_digital_currency_addresses() {
         let xml = SDN_FIXTURE
             .replace("Digital Currency Address - ETH", "Passport")
-            .replace("Digital Currency Address - XBT", "Passport");
+            .replace("Digital Currency Address - XBT", "Passport")
+            .replace("Digital Currency Address - TRX", "Passport")
+            .replace("Digital Currency Address - XRP", "Passport");
         assert!(matches!(
             parse_ofac_sdn_xml(&xml),
             Err(SanctionsImportError::NoAddresses)
