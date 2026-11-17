@@ -5,7 +5,9 @@ use tokio::net::TcpListener;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
-use tracefold_api::{app, config::Config, evm_sync::BlockscoutClient, health::HealthState};
+use tracefold_api::{
+    app, config::Config, evm_sync::BlockscoutClient, health::HealthState, tron_sync::TronGridClient,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -37,6 +39,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let solana_rpc_url =
         std::env::var("SOLANA_RPC_URL").unwrap_or_else(|_| "https://api.mainnet.solana.com".into());
     let blockscout = BlockscoutClient::from_env(http_client.clone())?;
+    let tron_grid = TronGridClient::from_env(http_client.clone())?;
 
     axum::serve(
         listener,
@@ -47,6 +50,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             bitcoin_esplora_url,
             solana_rpc_url,
             blockscout,
+            tron_grid,
         }),
     )
     .with_graceful_shutdown(shutdown_signal())

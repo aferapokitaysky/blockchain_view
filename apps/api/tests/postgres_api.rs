@@ -85,7 +85,7 @@ async fn investigation_and_address_routes_round_trip_through_postgres(pool: PgPo
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn network_constraint_accepts_legacy_eip155_and_solana_ids(pool: PgPool) {
+async fn network_constraint_accepts_legacy_eip155_solana_and_tron_ids(pool: PgPool) {
     let investigation_id = sqlx::query_scalar::<_, Uuid>(
         "INSERT INTO investigations (name) VALUES ('Network constraint') RETURNING id",
     )
@@ -100,6 +100,7 @@ async fn network_constraint_accepts_legacy_eip155_and_solana_ids(pool: PgPool) {
         "arbitrum",
         "eip155:10",
         "solana",
+        "tron",
     ] {
         sqlx::query("INSERT INTO tracked_addresses (investigation_id, network, address) VALUES ($1, $2, 'address')")
             .bind(investigation_id)
@@ -125,6 +126,7 @@ async fn network_constraint_rejects_malformed_or_unsupported_ids(pool: PgPool) {
         "eip155:18446744073709551616",
         "eip155:-1",
         "solana-mainnet",
+        "tron-mainnet",
         "polygon",
     ] {
         let result = sqlx::query("INSERT INTO tracked_addresses (investigation_id, network, address) VALUES ($1, $2, 'address')")
@@ -178,6 +180,48 @@ async fn solana_spl_mint_constraint_accepts_base58_mints_and_rejects_invalid_val
     assert!(invalid.is_err(), "invalid Solana mint must be rejected");
 }
 
+#[sqlx::test(migrations = "./migrations")]
+async fn tron_trc20_events_in_one_transaction_remain_distinct(pool: PgPool) {
+    let investigation_id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO investigations (name) VALUES ('TRON event identities') RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("investigation should be inserted");
+    let address_id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO tracked_addresses (investigation_id, network, address) \
+         VALUES ($1, 'tron', 'TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM') RETURNING id",
+    )
+    .bind(investigation_id)
+    .fetch_one(&pool)
+    .await
+    .expect("TRON address should be inserted");
+    let mint = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+    for (event_index, amount) in [(101, "1000000"), (202, "2000000")] {
+        sqlx::query(
+            "INSERT INTO observed_transfers \
+             (tracked_address_id, network, transaction_hash, event_index, transfer_kind, direction, \
+              received_amount, asset, token_contract_address, confirmed, provider, source_host) \
+             VALUES ($1, 'tron', 'aabbcc', $2, 'trc20', 'inbound', $3::numeric, 'USDT', $4, TRUE, 'TronGrid', 'api.trongrid.io')",
+        )
+        .bind(address_id)
+        .bind(event_index)
+        .bind(amount)
+        .bind(mint)
+        .execute(&pool)
+        .await
+        .expect("different TRC-20 events from one transaction should coexist");
+    }
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM observed_transfers WHERE tracked_address_id = $1 AND transaction_hash = 'aabbcc'",
+    )
+    .bind(address_id)
+    .fetch_one(&pool)
+    .await
+    .expect("TRC-20 event count should be queryable");
+    assert_eq!(count, 2);
+}
+
 fn test_state(database: PgPool) -> ApiState {
     ApiState {
         database,
@@ -192,6 +236,12 @@ fn test_state(database: PgPool) -> ApiState {
             reqwest::Client::new(),
         )
         .expect("тестовый Blockscout URL должен разбираться"),
+        tron_grid: tracefold_api::tron_sync::TronGridClient::new(
+            "http://127.0.0.1:1",
+            None,
+            reqwest::Client::new(),
+        )
+        .expect("тестовый TronGrid URL должен разбираться"),
     }
 }
 

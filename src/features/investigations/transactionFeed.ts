@@ -61,6 +61,7 @@ const NETWORK_NAMES: Record<string, TransactionFeedItem["network"]> = {
   base: "Base",
   arbitrum: "Arbitrum",
   solana: "Solana",
+  tron: "TRON",
 };
 
 function shortAddress(address: string): string {
@@ -89,6 +90,9 @@ function getAssetLabel(transfer: ObservedTransfer): string {
     transfer.token_contract_address
   ) {
     return `SPL ${shortAddress(transfer.token_contract_address)}`;
+  }
+  if (transfer.transfer_kind === "trc20" && transfer.token_contract_address) {
+    return `${transfer.asset} · ${shortAddress(transfer.token_contract_address)}`;
   }
   return transfer.asset;
 }

@@ -215,6 +215,8 @@ const networkMeta: Record<string, { color: string }> = {
   arbitrum: { color: "#64c8fa" },
   Solana: { color: "#a98cff" },
   solana: { color: "#a98cff" },
+  TRON: { color: "#ff5964" },
+  tron: { color: "#ff5964" },
 };
 
 function networkColor(network: string): string {
@@ -278,6 +280,15 @@ function NetworkShape({ network }: { network: Network }) {
           />
         </>
       )}
+      {normalizedNetwork === "tron" && (
+        <>
+          <path d="M4 4.5 20 8 12 20 4 4.5Z" />
+          <path d="m7.1 10.3 9.8 0M9.4 13.1l5.2 0" />
+          <circle cx="4" cy="4.5" r="1.1" fill="currentColor" stroke="none" />
+          <circle cx="20" cy="8" r="1.1" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="20" r="1.1" fill="currentColor" stroke="none" />
+        </>
+      )}
       {!networkMeta[network] && (
         <>
           <circle cx="12" cy="12" r="9" />
@@ -292,6 +303,7 @@ function NetworkMark({ network }: { network: Network }) {
   return (
     <span
       className="network-mark"
+      data-network={network.toLowerCase()}
       style={{ "--network": networkColor(network) } as CSSProperties}
       aria-label={network}
     >
@@ -574,7 +586,11 @@ function App() {
     if (addressDetection.status !== "ambiguous") return [];
     return addressDetection.family === "EVM"
       ? evmNetworks
-      : networkCatalog.networks.filter(({ family }) => family === "solana");
+      : networkCatalog.networks.filter(({ family }) =>
+          addressDetection.family === "Tron-compatible"
+            ? family === "tron"
+            : family === "solana",
+        );
   }, [addressDetection, evmNetworks, networkCatalog.networks]);
   const networkFilterOptions = useMemo(() => {
     const networkIds = new Set([
@@ -1893,6 +1909,14 @@ function App() {
                 unsupported programs, and public RPC retention also leave gaps.
               </p>
             )}
+            {trackedAddresses.some(({ network }) => network === "tron") && (
+              <p className="network-catalog-state" role="note">
+                TRON history covers confirmed native TRX transfers and indexed
+                TRC-20 Transfer events. Other contract calls, internal TRX
+                movements, TRC-10, TRC-721, and events omitted or delayed by
+                TronGrid are not included.
+              </p>
+            )}
             <div className="table-wrap">
               <table>
                 <thead>
@@ -2230,7 +2254,7 @@ function App() {
                 <input
                   id="wallet-address"
                   autoFocus
-                  placeholder="0x…, bc1…, or address"
+                  placeholder="0x…, bc1…, T… or address"
                   required
                   minLength={8}
                   value={query}

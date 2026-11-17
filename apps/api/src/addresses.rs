@@ -20,6 +20,7 @@ pub enum Network {
     Bitcoin,
     Base,
     Arbitrum,
+    Tron,
 }
 
 impl Network {
@@ -27,6 +28,7 @@ impl Network {
         let value = value.trim();
         match self {
             Self::Ethereum | Self::Base | Self::Arbitrum => normalize_evm_address(value),
+            Self::Tron => normalize_tron_address(value),
             Self::Bitcoin => {
                 let parsed = BitcoinAddress::from_str(value)
                     .map_err(|_| ApiError::Validation("Неверный формат адреса Bitcoin"))?;
@@ -126,6 +128,10 @@ fn normalize_catalogued_address(
             normalize_solana_address(value)
         }
         crate::networks::NetworkFamily::Solana => Err(ApiError::UnsupportedNetwork),
+        crate::networks::NetworkFamily::Tron if network.id == "tron" => {
+            normalize_tron_address(value)
+        }
+        crate::networks::NetworkFamily::Tron => Err(ApiError::UnsupportedNetwork),
     }
 }
 
@@ -138,6 +144,40 @@ pub(crate) fn normalize_solana_address(value: &str) -> Result<String, ApiError> 
         return Err(ApiError::Validation("Неверный формат адреса Solana"));
     }
     Ok(address.to_owned())
+}
+
+pub(crate) fn normalize_tron_address(value: &str) -> Result<String, ApiError> {
+    let address = value.trim();
+    let hex = address
+        .strip_prefix("0x")
+        .or_else(|| address.strip_prefix("0X"))
+        .unwrap_or(address);
+    let address = if hex.len() == 42 && hex[..2].eq_ignore_ascii_case("41") {
+        let mut payload = Vec::with_capacity(21);
+        for [high, low] in hex.as_bytes().as_chunks::<2>().0 {
+            let high = (*high as char).to_digit(16);
+            let low = (*low as char).to_digit(16);
+            let Some(byte) = high.zip(low).map(|(high, low)| high * 16 + low) else {
+                return Err(ApiError::Validation("Неверный формат адреса TRON"));
+            };
+            payload.push(byte as u8);
+        }
+        bs58::encode(payload).with_check().into_string()
+    } else {
+        address.to_owned()
+    };
+
+    let payload = bs58::decode(&address)
+        .with_check(None)
+        .into_vec()
+        .map_err(|_| ApiError::Validation("Неверный формат адреса TRON"))?;
+    if payload.len() != 21
+        || payload[0] != 0x41
+        || bs58::encode(&payload).with_check().into_string() != address
+    {
+        return Err(ApiError::Validation("Неверный формат адреса TRON"));
+    }
+    Ok(address)
 }
 
 pub(crate) fn normalize_evm_address(value: &str) -> Result<String, ApiError> {
@@ -163,7 +203,9 @@ async fn ensure_investigation(state: &ApiState, id: Uuid) -> Result<(), ApiError
 
 #[cfg(test)]
 mod tests {
-    use super::{Network, normalize_catalogued_address, normalize_solana_address};
+    use super::{
+        Network, normalize_catalogued_address, normalize_solana_address, normalize_tron_address,
+    };
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
 
@@ -183,6 +225,7 @@ mod tests {
             native_asset: "ETH".into(),
             explorer_url: Some("https://explorer.optimism.io/".into()),
             history_sync_available: true,
+            history_coverage: None,
             api_base_url: Some(reqwest::Url::parse("https://explorer.optimism.io/").unwrap()),
         };
         assert_eq!(
@@ -208,6 +251,22 @@ mod tests {
         assert_eq!(normalize_solana_address(address).unwrap(), address);
         assert!(normalize_solana_address("So1111111111111111111111111111111111111111").is_err());
         assert!(normalize_solana_address("0OIl").is_err());
+    }
+
+    #[test]
+    fn validates_tron_base58check_and_normalizes_hex_addresses() {
+        let address = "TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM";
+        assert_eq!(normalize_tron_address(address).unwrap(), address);
+        assert_eq!(
+            normalize_tron_address("41ce8a0cf0c16d48bcf22825f6053248df653c89ca").unwrap(),
+            address
+        );
+        assert_eq!(
+            normalize_tron_address("0x41ce8a0cf0c16d48bcf22825f6053248df653c89ca").unwrap(),
+            address
+        );
+        assert!(normalize_tron_address("T1111111111111111111111111111111111").is_err());
+        assert!(normalize_tron_address("00ce8a0cf0c16d48bcf22825f6053248df653c89ca").is_err());
     }
 
     #[test]

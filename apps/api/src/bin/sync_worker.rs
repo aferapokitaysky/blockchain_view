@@ -2,7 +2,9 @@ use std::{error::Error, time::Duration};
 
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::watch;
-use tracefold_api::{evm_sync::BlockscoutClient, health::HealthState, sync_worker};
+use tracefold_api::{
+    evm_sync::BlockscoutClient, health::HealthState, sync_worker, tron_sync::TronGridClient,
+};
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
@@ -26,6 +28,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let redis = redis::Client::open(redis_url)?;
     let http_client = reqwest::Client::builder()
         .timeout(Duration::from_secs(12))
+        .redirect(reqwest::redirect::Policy::none())
         .user_agent("Tracefold/0.1 (+https://github.com/aferapokitaysky/blockchain_view)")
         .build()?;
     let bitcoin_esplora_url = std::env::var("BITCOIN_ESPLORA_URL")
@@ -33,6 +36,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let solana_rpc_url =
         std::env::var("SOLANA_RPC_URL").unwrap_or_else(|_| "https://api.mainnet.solana.com".into());
     let blockscout = BlockscoutClient::from_env(http_client.clone())?;
+    let tron_grid = TronGridClient::from_env(http_client.clone())?;
     let state = HealthState {
         database,
         redis,
@@ -40,6 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         bitcoin_esplora_url,
         solana_rpc_url,
         blockscout,
+        tron_grid,
     };
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);

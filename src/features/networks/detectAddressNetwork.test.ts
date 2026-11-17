@@ -24,6 +24,19 @@ describe("detectAddressNetwork", () => {
     });
   });
 
+  it("asks users to confirm a checksum-valid TRON Base58Check address", async () => {
+    await expect(
+      detectAddressNetwork("TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM"),
+    ).resolves.toMatchObject({
+      status: "ambiguous",
+      family: "Tron-compatible",
+      message: expect.stringContaining("Confirm TRON explicitly"),
+    });
+    await expect(
+      detectAddressNetwork("TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJN"),
+    ).resolves.not.toMatchObject({ network: "tron" });
+  });
+
   it("validates a Bitcoin Bech32 mainnet address", async () => {
     await expect(
       detectAddressNetwork("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"),

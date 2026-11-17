@@ -4,9 +4,17 @@
 
 ## Network catalog and provider selection
 
-`GET /api/v1/networks` returns Bitcoin plus the EVM mainnets currently published by Blockscout's `/api/json/config`. The API keeps the catalog in memory for six hours and falls back to the last successful catalog or the built-in Bitcoin, Ethereum, Base, and Arbitrum entries if refresh fails. Legacy IDs remain `bitcoin`, `ethereum`, `base`, and `arbitrum`; other EVM networks use `eip155:<chain_id>`. EVM address format does not identify a chain, so the analyst selects a network from this catalog.
+`GET /api/v1/networks` returns Bitcoin plus the EVM mainnets currently published by Blockscout's `/api/json/config`. The API keeps the catalog in memory for six hours and falls back to the last successful catalog or the built-in Bitcoin, Ethereum, Base, Arbitrum, Solana, and TRON entries if refresh fails. Legacy IDs remain `bitcoin`, `ethereum`, `base`, and `arbitrum`; other EVM networks use `eip155:<chain_id>`. EVM address format does not identify a chain, so the analyst selects a network from this catalog.
 
 For each chain, the API prefers a validated HTTPS Blockscout instance URL from `instance_url_from_config` or an explorer explicitly hosted by Blockscout. It does not send requests to arbitrary explorer URLs or follow redirects. If `BLOCKSCOUT_API_KEY` is set, the configured multichain API base is used instead; a custom `BLOCKSCOUT_BASE_URL` also acts as an explicit provider override. The `history_sync_available` value means a provider route is configured, not that the endpoint was health-checked. Individual instances may rate-limit, block automated requests, return HTML challenges, or omit history; those responses become a generic provider-unavailable error and are not stored as observations.
+
+## TRON history and coverage
+
+The built-in `tron` network uses TronGrid mainnet at `https://api.trongrid.io`. Set `TRONGRID_BASE_URL` to another trusted TronGrid-compatible root URL if needed, and optionally set `TRONGRID_API_KEY`. The key is sent only in the backend `TRON-PRO-API-KEY` header; it is never part of a request URL or frontend configuration. `TRON-PRO-API-KEY` must not be exposed in browser code.
+
+Two independent fingerprint cursors are maintained for native account transactions and TRC-20 event history. Each sync is bounded to three pages per stream (TronGrid page size 200); incomplete catch-up/backfill continues on a later sync. The account endpoint includes contract calls and other transaction types, so the adapter stores native TRX only for successful `TransferContract` entries. TRC-20 history stores rows whose event type is exactly `Transfer`; approvals and other events are ignored. Source addresses are checksum-validated and normalized before matching. When the provider does not return a documented event/log index, a deterministic event identity is synthesized so multiple events in one transaction are retained.
+
+This is indexed provider history, not a complete chain index. TronGrid can rate-limit, omit or delay indexed rows, and older history availability depends on provider retention. TRX internal contract transfers, TRC-10, TRC-721, swaps, and other contract semantics are not decoded. HTTP 403/429 responses fail the current sync without an immediate retry; the worker retries on a later scheduled run, or a user can request another manual sync. The built-in catalog reports only `native-trx` and `trc20` coverage and marks the route available when the adapter is configured, not health-checked.
 
 ## Solana history and coverage
 

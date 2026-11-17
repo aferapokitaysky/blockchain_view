@@ -8,6 +8,7 @@ use tokio::time::timeout;
 use tracing::warn;
 
 use crate::evm_sync::BlockscoutClient;
+use crate::tron_sync::TronGridClient;
 
 #[derive(Clone)]
 pub struct HealthState {
@@ -17,6 +18,7 @@ pub struct HealthState {
     pub bitcoin_esplora_url: String,
     pub solana_rpc_url: String,
     pub blockscout: BlockscoutClient,
+    pub tron_grid: TronGridClient,
 }
 
 #[cfg(test)]
@@ -32,6 +34,8 @@ pub(crate) fn unavailable_state() -> HealthState {
         solana_rpc_url: "http://127.0.0.1:1".into(),
         blockscout: BlockscoutClient::new("http://127.0.0.1:1", None, reqwest::Client::new())
             .expect("тестовая конфигурация Blockscout должна разбираться"),
+        tron_grid: TronGridClient::new("http://127.0.0.1:1", None, reqwest::Client::new())
+            .expect("тестовая конфигурация TronGrid должна разбираться"),
     }
 }
 

@@ -24,7 +24,8 @@ export function formatObservedAmount(
   if (transfer.network === "bitcoin") return formatBitcoinAmount(rawAmount);
   if (
     (transfer.transfer_kind === "erc20" ||
-      transfer.transfer_kind === "solana_spl") &&
+      transfer.transfer_kind === "solana_spl" ||
+      transfer.transfer_kind === "trc20") &&
     (transfer.token_decimals === null || transfer.token_decimals === undefined)
   ) {
     return `${BigInt(rawAmount).toLocaleString()} raw units`;
