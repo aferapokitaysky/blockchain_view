@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -39,7 +40,9 @@ import {
 import {
   ApiRequestError,
   checkApiHealth,
+  createInvestigation,
   listGraphSnapshots,
+  listInvestigations,
   listTrackedWalletHistories,
   listTrackedWallets,
   listSupportedNetworks,
@@ -51,11 +54,18 @@ import {
   trackWallet,
   type ObservedTransfer,
   type GraphSnapshot,
+  type Investigation,
   type AddressScreeningResult,
   type StoredRiskSignal,
   type TrackedAddress,
   type WalletHistory,
 } from "./features/investigations/api";
+import { InvestigationManager } from "./features/investigations/InvestigationManager";
+import {
+  readStoredInvestigationId,
+  resolveActiveInvestigationId,
+  storeInvestigationId,
+} from "./features/investigations/activeInvestigation";
 import { WalletFlowGraph } from "./features/graph/WalletFlowGraph";
 import { formatObservedAmount } from "./features/investigations/formatAssetAmount";
 import {
@@ -74,7 +84,7 @@ type Network = string;
 const TRANSACTIONS_PER_PAGE = 50;
 const PRIMARY_NAVIGATION = [
   { label: "Overview", Icon: Activity, available: true },
-  { label: "Investigations", Icon: Crosshair, available: false },
+  { label: "Investigations", Icon: Crosshair, available: true },
   { label: "Watchlist", Icon: Bell, available: false },
   { label: "Entities", Icon: Wallet, available: false },
 ] as const;
@@ -249,6 +259,11 @@ function App() {
   const [trackedAddresses, setTrackedAddresses] = useState<TrackedAddress[]>(
     [],
   );
+  const [investigations, setInvestigations] = useState<Investigation[]>([]);
+  const [activeInvestigationId, setActiveInvestigationId] = useState<
+    string | null
+  >(() => readStoredInvestigationId());
+  const [isCreatingInvestigation, setIsCreatingInvestigation] = useState(false);
   const [addressesLoading, setAddressesLoading] = useState(true);
   const [addressesError, setAddressesError] = useState("");
   const [selectedAddressId, setSelectedAddressId] = useState("");
@@ -335,27 +350,51 @@ function App() {
   const networkFilterOptions = useMemo(() => {
     const networkIds = new Set([
       ...LEGACY_NETWORKS.map(({ id }) => id),
-      ...trackedAddresses.map(({ network }) => network.toLowerCase()),
+      ...trackedAddresses
+        .filter(
+          ({ investigation_id }) => investigation_id === activeInvestigationId,
+        )
+        .map(({ network }) => network.toLowerCase()),
     ]);
     return [...networkIds].map((id) => ({
       id,
       name: getNetworkName(id, networkCatalog.networks),
     }));
-  }, [trackedAddresses, networkCatalog.networks]);
+  }, [activeInvestigationId, trackedAddresses, networkCatalog.networks]);
   const selectedTrackedAddress = trackedAddresses.find(
-    (address) => address.id === selectedAddressId,
+    (address) =>
+      address.id === selectedAddressId &&
+      address.investigation_id === activeInvestigationId,
+  );
+  const activeInvestigationAddresses = useMemo(
+    () =>
+      trackedAddresses.filter(
+        ({ investigation_id }) => investigation_id === activeInvestigationId,
+      ),
+    [trackedAddresses, activeInvestigationId],
   );
   const activeInvestigationData = useMemo(
     () =>
       getActiveInvestigationData(
         trackedAddresses,
         activityHistories,
-        selectedAddressId,
+        activeInvestigationId,
       ),
-    [trackedAddresses, activityHistories, selectedAddressId],
+    [trackedAddresses, activityHistories, activeInvestigationId],
   );
   const flowHistories =
     activityStatus === "ready" ? activeInvestigationData.histories : null;
+  const addressCountsByInvestigation = useMemo(
+    () =>
+      new Map(
+        investigations.map(({ id }) => [
+          id,
+          trackedAddresses.filter((address) => address.investigation_id === id)
+            .length,
+        ]),
+      ),
+    [investigations, trackedAddresses],
+  );
   const visibleFlowSnapshots = useMemo(
     () =>
       flowSnapshots.filter(
@@ -532,15 +571,29 @@ function App() {
     };
   }, [selectedTrackedAddress, riskRefreshKey]);
 
-  const loadTrackedAddresses = async () => {
+  const loadTrackedAddresses = useCallback(async () => {
     setAddressesError("");
     try {
-      const addresses = await listTrackedWallets();
+      const loadedInvestigations = await listInvestigations();
+      const addresses = await listTrackedWallets(loadedInvestigations);
+      const nextInvestigationId = resolveActiveInvestigationId(
+        loadedInvestigations,
+        activeInvestigationId ?? readStoredInvestigationId(),
+      );
+      setInvestigations(loadedInvestigations);
       setTrackedAddresses(addresses);
+      setActiveInvestigationId(nextInvestigationId);
+      storeInvestigationId(nextInvestigationId);
       setSelectedAddressId((current) =>
-        addresses.some((address) => address.id === current)
+        addresses.some(
+          (address) =>
+            address.id === current &&
+            address.investigation_id === nextInvestigationId,
+        )
           ? current
-          : (addresses[0]?.id ?? ""),
+          : (addresses.find(
+              (address) => address.investigation_id === nextInvestigationId,
+            )?.id ?? ""),
       );
     } catch (error) {
       setAddressesError(
@@ -550,6 +603,63 @@ function App() {
       );
     } finally {
       setAddressesLoading(false);
+    }
+  }, [activeInvestigationId]);
+
+  const selectInvestigation = (investigationId: string) => {
+    if (!investigations.some(({ id }) => id === investigationId)) return;
+    setActiveInvestigationId(investigationId);
+    storeInvestigationId(investigationId);
+    setSelectedAddressId(
+      trackedAddresses.find(
+        ({ investigation_id }) => investigation_id === investigationId,
+      )?.id ?? "",
+    );
+    setActiveNetwork("All networks");
+    setActivityPage(0);
+    setHistoryRecords(null);
+    setHistoryError("");
+    setScreeningResult(null);
+    setScreeningError("");
+    setOpenedFlowSnapshot(null);
+    setFlowError("");
+    setFlowSnapshotError("");
+    setActivityError("");
+    setActivityStatus("loading");
+    setActiveTab("Overview");
+  };
+
+  const handleCreateInvestigation = async (name: string) => {
+    setIsCreatingInvestigation(true);
+    try {
+      const created = await createInvestigation(name);
+      setInvestigations((current) => [
+        created,
+        ...current.filter(({ id }) => id !== created.id),
+      ]);
+      setActiveInvestigationId(created.id);
+      storeInvestigationId(created.id);
+      setSelectedAddressId("");
+      setActivityHistories([]);
+      setActivityError("");
+      setActivityStatus("ready");
+      setHistoryRecords(null);
+      setHistoryError("");
+      setScreeningResult(null);
+      setScreeningError("");
+      setFlowSnapshots((current) =>
+        current.filter(
+          ({ investigation_id }) => investigation_id === created.id,
+        ),
+      );
+      setOpenedFlowSnapshot(null);
+      setActivityPage(0);
+      setActiveNetwork("All networks");
+      setFlowError("");
+      setFlowSnapshotError("");
+      setNotice(`Created investigation “${created.name}”.`);
+    } finally {
+      setIsCreatingInvestigation(false);
     }
   };
 
@@ -569,7 +679,7 @@ function App() {
     if (apiStatus === "online") {
       void Promise.resolve().then(loadTrackedAddresses);
     }
-  }, [apiStatus]);
+  }, [apiStatus, loadTrackedAddresses]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -593,7 +703,7 @@ function App() {
         setActivityError(addressesError);
         return;
       }
-      if (trackedAddresses.length === 0) {
+      if (activeInvestigationAddresses.length === 0) {
         if (!isCurrent) return;
         setActivityHistories([]);
         setActivityError("");
@@ -605,7 +715,9 @@ function App() {
       setActivityError("");
       setActivityStatus("loading");
       try {
-        const histories = await listTrackedWalletHistories(trackedAddresses);
+        const histories = await listTrackedWalletHistories(
+          activeInvestigationAddresses,
+        );
         if (!isCurrent) return;
         setActivityHistories(histories);
         setActivityStatus("ready");
@@ -624,10 +736,10 @@ function App() {
     };
   }, [
     activityRefreshKey,
+    activeInvestigationAddresses,
     addressesError,
     addressesLoading,
     apiStatus,
-    trackedAddresses,
   ]);
 
   useEffect(() => {
@@ -712,10 +824,24 @@ function App() {
         address: query,
         label: walletLabel,
         investigationId:
-          walletInvestigationId ||
-          activeInvestigationData.investigationId ||
+          (trackSource === "counterparty" ? walletInvestigationId : null) ||
+          activeInvestigationId ||
           undefined,
       });
+      if (!activeInvestigationId && trackSource === "manual") {
+        try {
+          const loadedInvestigations = await listInvestigations();
+          setInvestigations(loadedInvestigations);
+          setActiveInvestigationId(trackedAddress.investigation_id);
+          storeInvestigationId(trackedAddress.investigation_id);
+        } catch {
+          setAddressesError(
+            "Wallet saved, but the investigation list could not be refreshed.",
+          );
+          setActiveInvestigationId(trackedAddress.investigation_id);
+          storeInvestigationId(trackedAddress.investigation_id);
+        }
+      }
       const nextAddresses = [
         trackedAddress,
         ...trackedAddresses.filter(
@@ -964,13 +1090,23 @@ function App() {
             TRACE<span className="brand-light">FOLD</span>
           </span>
         </a>
-        <div className="workspace-select">
+        <button
+          className="workspace-select"
+          onClick={() => setActiveTab("Investigations")}
+        >
           <div className="workspace-avatar">TF</div>
           <span>
-            <b>Tracefold workspace</b>
-            <small>Local workspace</small>
+            <b>
+              {investigations.find(({ id }) => id === activeInvestigationId)
+                ?.name ?? "No investigation"}
+            </b>
+            <small>
+              {activeInvestigationId
+                ? `${activeInvestigationAddresses.length} saved addresses`
+                : "Create an investigation"}
+            </small>
           </span>
-        </div>
+        </button>
         <div className="nav-caption">Workspace</div>
         <nav className="primary-nav" aria-label="Главная навигация">
           {PRIMARY_NAVIGATION.map(({ label, Icon, available }) => (
@@ -1025,7 +1161,7 @@ function App() {
             <span>Data sources</span>
             <span className="source-count">
               {apiStatus === "online"
-                ? `${trackedAddresses.length} tracked`
+                ? `${activeInvestigationAddresses.length} tracked`
                 : "API unavailable"}
             </span>
           </div>
@@ -1079,829 +1215,864 @@ function App() {
             </button>
           </div>
         </header>
-        <div className="page-content">
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">
-                <span className="eyebrow-dot" />
-                Investigation
-              </div>
-              <h1>Address flow overview</h1>
-              <p>
-                Review observed transfers and participant links from saved
-                addresses.
-              </p>
-            </div>
-            <div className="heading-actions">
-              <button className="button button-primary" onClick={openAddWallet}>
-                <Plus size={17} /> Add wallet
-              </button>
-            </div>
+        {activeTab === "Investigations" ? (
+          <div className="page-content">
+            <InvestigationManager
+              investigations={investigations}
+              activeInvestigationId={activeInvestigationId}
+              addressesByInvestigation={addressCountsByInvestigation}
+              loading={addressesLoading}
+              saving={isCreatingInvestigation}
+              error={addressesError}
+              onSelect={selectInvestigation}
+              onCreate={handleCreateInvestigation}
+              onRetry={() => void retryAddressLoad()}
+            />
           </div>
-          <section className="stats-grid" aria-label="Investigation summary">
-            <article className="stat-card">
-              <div className="stat-label">
-                Tracked addresses <Wallet size={15} />
-              </div>
-              <div className="stat-value">
-                {addressesLoading ? "—" : dashboardSummary.trackedAddresses}
-              </div>
-              <div className="stat-foot">
-                <span>Saved in this investigation</span>
-              </div>
-            </article>
-            <article className="stat-card">
-              <div className="stat-label">
-                Networks <Blocks size={15} />
-              </div>
-              <div className="stat-value">
-                {addressesLoading ? "—" : dashboardSummary.networks}
-              </div>
-              <div className="stat-foot">
-                <span>Represented by saved addresses</span>
-              </div>
-            </article>
-            <article className="stat-card">
-              <div className="stat-label">
-                Transactions observed <Activity size={15} />
-              </div>
-              <div className="stat-value">
-                {activityStatus === "ready"
-                  ? dashboardSummary.transactions
-                  : "—"}
-              </div>
-              <div className="stat-foot">
-                <span>Unique transaction hashes in saved history</span>
-              </div>
-            </article>
-            <article className="stat-card">
-              <div className="stat-label">
-                Connections <GitBranch size={15} />
-              </div>
-              <div className="stat-value">
-                {activityStatus === "ready"
-                  ? dashboardSummary.connections
-                  : "—"}
-              </div>
-              <div className="stat-foot">
-                <span>Observed links in the current graph</span>
-              </div>
-            </article>
-          </section>
-
-          <section
-            className="live-graph-region"
-            aria-label="Wallet connections"
-          >
-            {activityStatus === "loading" || apiStatus === "checking" ? (
-              <div className="address-state" role="status">
-                Loading saved addresses and transaction history…
-              </div>
-            ) : activityStatus === "error" ? (
-              <div className="address-state address-error" role="alert">
-                <span>{activityError}</span>
-                <button
-                  className="text-action"
-                  onClick={() =>
-                    setActivityRefreshKey((revision) => revision + 1)
-                  }
-                  disabled={apiStatus !== "online"}
-                >
-                  Retry
-                </button>
-              </div>
-            ) : trackedAddresses.length === 0 ? (
-              <div className="flow-graph-empty">
-                <span className="flow-graph-empty-mark" aria-hidden="true">
-                  <svg viewBox="0 0 40 40">
-                    <circle cx="10" cy="20" r="4" />
-                    <circle cx="30" cy="10" r="4" />
-                    <circle cx="30" cy="30" r="4" />
-                    <path d="M14 18 26 12M14 22l12 6" />
-                  </svg>
-                </span>
-                <div>
-                  <strong>No addresses in this investigation</strong>
-                  <p>
-                    Add a public wallet address, then sync its history to start
-                    mapping observed connections.
-                  </p>
+        ) : (
+          <div className="page-content">
+            <div className="page-heading">
+              <div>
+                <div className="eyebrow">
+                  <span className="eyebrow-dot" />
+                  Investigation
                 </div>
+                <h1>Address flow overview</h1>
+                <p>
+                  Review observed transfers and participant links from saved
+                  addresses.
+                </p>
+              </div>
+              <div className="heading-actions">
                 <button
                   className="button button-primary"
                   onClick={openAddWallet}
                 >
-                  <Plus size={16} /> Add wallet
+                  <Plus size={17} /> Add wallet
                 </button>
               </div>
-            ) : flowHistories ? (
-              <>
-                <WalletFlowGraph
-                  key={`${activeInvestigationData.investigationId}:${activeFlowSnapshot?.id ?? "live"}`}
-                  histories={flowHistories}
-                  networkNames={networkNames}
-                  snapshots={visibleFlowSnapshots}
-                  openedSnapshot={activeFlowSnapshot}
-                  savingSnapshot={savingFlowSnapshot}
-                  onSaveSnapshot={(snapshot) =>
-                    void saveCurrentGraphSnapshot(snapshot)
-                  }
-                  onOpenSnapshot={setOpenedFlowSnapshot}
-                  onTrackCounterparty={(network, address, investigationId) => {
-                    setQuery(address);
-                    setNetworkChoice(network);
-                    setWalletLabel("");
-                    setWalletInvestigationId(investigationId);
-                    setTrackSource("counterparty");
-                    setFormError("");
-                    setShowAdd(true);
-                  }}
-                />
-                {dashboardSummary.connections === 0 &&
-                  selectedTrackedAddress && (
-                    <div className="flow-graph-action">
-                      <div>
-                        <strong>History is saved per address</strong>
-                        <p>
-                          Sync the selected wallet to load provider
-                          observations. Some networks expose participants
-                          without a direct sender or recipient.
-                        </p>
+            </div>
+            <section className="stats-grid" aria-label="Investigation summary">
+              <article className="stat-card">
+                <div className="stat-label">
+                  Tracked addresses <Wallet size={15} />
+                </div>
+                <div className="stat-value">
+                  {addressesLoading ? "—" : dashboardSummary.trackedAddresses}
+                </div>
+                <div className="stat-foot">
+                  <span>Saved in this investigation</span>
+                </div>
+              </article>
+              <article className="stat-card">
+                <div className="stat-label">
+                  Networks <Blocks size={15} />
+                </div>
+                <div className="stat-value">
+                  {addressesLoading ? "—" : dashboardSummary.networks}
+                </div>
+                <div className="stat-foot">
+                  <span>Represented by saved addresses</span>
+                </div>
+              </article>
+              <article className="stat-card">
+                <div className="stat-label">
+                  Transactions observed <Activity size={15} />
+                </div>
+                <div className="stat-value">
+                  {activityStatus === "ready"
+                    ? dashboardSummary.transactions
+                    : "—"}
+                </div>
+                <div className="stat-foot">
+                  <span>Unique transaction hashes in saved history</span>
+                </div>
+              </article>
+              <article className="stat-card">
+                <div className="stat-label">
+                  Connections <GitBranch size={15} />
+                </div>
+                <div className="stat-value">
+                  {activityStatus === "ready"
+                    ? dashboardSummary.connections
+                    : "—"}
+                </div>
+                <div className="stat-foot">
+                  <span>Observed links in the current graph</span>
+                </div>
+              </article>
+            </section>
+
+            <section
+              className="live-graph-region"
+              aria-label="Wallet connections"
+            >
+              {activityStatus === "loading" || apiStatus === "checking" ? (
+                <div className="address-state" role="status">
+                  Loading saved addresses and transaction history…
+                </div>
+              ) : activityStatus === "error" ? (
+                <div className="address-state address-error" role="alert">
+                  <span>{activityError}</span>
+                  <button
+                    className="text-action"
+                    onClick={() =>
+                      setActivityRefreshKey((revision) => revision + 1)
+                    }
+                    disabled={apiStatus !== "online"}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : activeInvestigationAddresses.length === 0 ? (
+                <div className="flow-graph-empty">
+                  <span className="flow-graph-empty-mark" aria-hidden="true">
+                    <svg viewBox="0 0 40 40">
+                      <circle cx="10" cy="20" r="4" />
+                      <circle cx="30" cy="10" r="4" />
+                      <circle cx="30" cy="30" r="4" />
+                      <path d="M14 18 26 12M14 22l12 6" />
+                    </svg>
+                  </span>
+                  <div>
+                    <strong>No addresses in this investigation</strong>
+                    <p>
+                      Add a public wallet address, then sync its history to
+                      start mapping observed connections.
+                    </p>
+                  </div>
+                  <button
+                    className="button button-primary"
+                    onClick={openAddWallet}
+                  >
+                    <Plus size={16} /> Add wallet
+                  </button>
+                </div>
+              ) : flowHistories ? (
+                <>
+                  <WalletFlowGraph
+                    key={`${activeInvestigationData.investigationId}:${activeFlowSnapshot?.id ?? "live"}`}
+                    histories={flowHistories}
+                    networkNames={networkNames}
+                    snapshots={visibleFlowSnapshots}
+                    openedSnapshot={activeFlowSnapshot}
+                    savingSnapshot={savingFlowSnapshot}
+                    onSaveSnapshot={(snapshot) =>
+                      void saveCurrentGraphSnapshot(snapshot)
+                    }
+                    onOpenSnapshot={setOpenedFlowSnapshot}
+                    onTrackCounterparty={(
+                      network,
+                      address,
+                      investigationId,
+                    ) => {
+                      setQuery(address);
+                      setNetworkChoice(network);
+                      setWalletLabel("");
+                      setWalletInvestigationId(investigationId);
+                      setTrackSource("counterparty");
+                      setFormError("");
+                      setShowAdd(true);
+                    }}
+                  />
+                  {dashboardSummary.connections === 0 &&
+                    selectedTrackedAddress && (
+                      <div className="flow-graph-action">
+                        <div>
+                          <strong>History is saved per address</strong>
+                          <p>
+                            Sync the selected wallet to load provider
+                            observations. Some networks expose participants
+                            without a direct sender or recipient.
+                          </p>
+                        </div>
+                        <button
+                          className="button button-secondary"
+                          onClick={() => void syncSavedAddress()}
+                          disabled={isSyncing || apiStatus !== "online"}
+                        >
+                          {isSyncing
+                            ? "Syncing history…"
+                            : "Sync selected wallet"}
+                        </button>
                       </div>
+                    )}
+                  {flowLoading && (
+                    <div className="address-state" role="status">
+                      Refreshing graph evidence…
+                    </div>
+                  )}
+                  {flowError && (
+                    <div className="address-state address-error" role="alert">
+                      <span>{flowError}</span>
                       <button
-                        className="button button-secondary"
-                        onClick={() => void syncSavedAddress()}
-                        disabled={isSyncing || apiStatus !== "online"}
+                        className="text-action"
+                        onClick={() => void buildWalletConnections()}
                       >
-                        {isSyncing
-                          ? "Syncing history…"
-                          : "Sync selected wallet"}
+                        Retry
                       </button>
                     </div>
                   )}
-                {flowLoading && (
-                  <div className="address-state" role="status">
-                    Refreshing graph evidence…
-                  </div>
-                )}
-                {flowError && (
-                  <div className="address-state address-error" role="alert">
-                    <span>{flowError}</span>
-                    <button
-                      className="text-action"
-                      onClick={() => void buildWalletConnections()}
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-                {flowSnapshotError && (
-                  <div className="address-state address-error" role="alert">
-                    {flowSnapshotError}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="address-state" role="status">
-                Loading saved graph evidence…
-              </div>
-            )}
-          </section>
-
-          <section className="risk-panel" id="risk-signals">
-            <div className="risk-heading">
-              <div>
-                <div className="risk-title">
-                  <span className="risk-icon">
-                    <Crosshair size={16} />
-                  </span>
-                  <h2>Wallet risk assessment</h2>
-                  <span className="demo-badge">
-                    MODEL {walletAssessment.modelVersion}
-                  </span>
+                  {flowSnapshotError && (
+                    <div className="address-state address-error" role="alert">
+                      {flowSnapshotError}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="address-state" role="status">
+                  Loading saved graph evidence…
                 </div>
-                <p>{walletAssessment.disclaimer}</p>
-              </div>
-              <div className="risk-heading-actions">
-                {selectedTrackedAddress && (
+              )}
+            </section>
+
+            <section className="risk-panel" id="risk-signals">
+              <div className="risk-heading">
+                <div>
+                  <div className="risk-title">
+                    <span className="risk-icon">
+                      <Crosshair size={16} />
+                    </span>
+                    <h2>Wallet risk assessment</h2>
+                    <span className="demo-badge">
+                      MODEL {walletAssessment.modelVersion}
+                    </span>
+                  </div>
+                  <p>{walletAssessment.disclaimer}</p>
+                </div>
+                <div className="risk-heading-actions">
+                  {selectedTrackedAddress && (
+                    <button
+                      className="button button-secondary"
+                      onClick={refreshWalletRiskSignals}
+                      disabled={riskSignalsLoading}
+                    >
+                      Refresh evidence
+                    </button>
+                  )}
                   <button
                     className="button button-secondary"
-                    onClick={refreshWalletRiskSignals}
-                    disabled={riskSignalsLoading}
+                    onClick={() => setNotice("Открыта методика оценки риска")}
                   >
-                    Refresh evidence
+                    Scoring methodology <ExternalLink size={13} />
                   </button>
-                )}
-                <button
-                  className="button button-secondary"
-                  onClick={() => setNotice("Открыта методика оценки риска")}
-                >
-                  Scoring methodology <ExternalLink size={13} />
-                </button>
-              </div>
-            </div>
-            {!selectedTrackedAddress ? (
-              <div className="address-state">
-                Save an address to view its analyst-entered risk evidence.
-              </div>
-            ) : riskSignalsLoading ? (
-              <div className="address-state" role="status">
-                Loading evidence for{" "}
-                {selectedTrackedAddress.label || selectedTrackedAddress.address}
-                …
-              </div>
-            ) : riskSignalsError ? (
-              <div className="address-state address-error" role="alert">
-                <span>{riskSignalsError}</span>
-                <button
-                  className="text-action"
-                  onClick={refreshWalletRiskSignals}
-                >
-                  Retry
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="risk-content">
-                  <div className={`risk-score score-${walletAssessment.level}`}>
-                    <div
-                      className="score-ring"
-                      style={
-                        {
-                          "--score": `${walletAssessment.score}%`,
-                        } as CSSProperties
-                      }
-                    >
-                      <span>
-                        {walletAssessment.score}
-                        <small>/100</small>
-                      </span>
-                    </div>
-                    <b>{walletAssessment.level} review priority</b>
-                    <small>
-                      {selectedTrackedAddress.label ||
-                        selectedTrackedAddress.address}
-                    </small>
-                  </div>
-                  <div className="risk-signal-list">
-                    {walletAssessment.contributions.length === 0 ? (
-                      <div className="address-state">
-                        {activityStatus === "ready"
-                          ? "No matching observations or analyst evidence are recorded for this address."
-                          : "Saved transaction observations are not loaded, so behavior signals are unavailable."}
-                      </div>
-                    ) : (
-                      walletAssessment.contributions.map((item) => {
-                        const signal = item.signal;
-                        const sourceHref = safeExternalLink(
-                          signal.sourceReference,
-                        );
-                        return (
-                          <article className="risk-signal" key={signal.id}>
-                            <span
-                              className={`signal-mark severity-${signal.severity}`}
-                            >
-                              <Activity size={14} />
-                            </span>
-                            <span className="signal-copy">
-                              <b>{signal.title}</b>
-                              <small>{signal.detail}</small>
-                              <span className="signal-meta">
-                                {signal.source} <i />{" "}
-                                {signal.hops === 0
-                                  ? "Direct evidence"
-                                  : `${signal.hops} hop${signal.hops === 1 ? "" : "s"}`}{" "}
-                                <i />{" "}
-                                {new Date(signal.observedAt).toLocaleDateString(
-                                  "en-US",
-                                  { month: "short", day: "numeric" },
-                                )}
-                                {signal.sourceReference && (
-                                  <>
-                                    <i />{" "}
-                                    {sourceHref ? (
-                                      <a
-                                        href={sourceHref}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                      >
-                                        Source record
-                                      </a>
-                                    ) : (
-                                      <span>Source reference on file</span>
-                                    )}
-                                  </>
-                                )}
-                              </span>
-                            </span>
-                            <span className="signal-contribution">
-                              <span
-                                className={`severity-label severity-text-${signal.severity}`}
-                              >
-                                {signal.severity}
-                              </span>
-                              <small>+{item.contribution.toFixed(1)} pts</small>
-                              <small>
-                                {item.baseWeight} ×{" "}
-                                {item.distanceFactor.toFixed(2)} hop ×{" "}
-                                {item.categoryFactor.toFixed(2)}{" "}
-                                {signal.category}
-                              </small>
-                            </span>
-                          </article>
-                        );
-                      })
-                    )}
-                  </div>
                 </div>
-                <div className="risk-evidence-note">
-                  <span>
-                    {screeningResult?.status === "exact_match"
-                      ? "Exact OFAC match included. Review the source entry."
-                      : screeningResult?.status === "no_exact_match"
-                        ? "OFAC snapshot checked: no exact match. This does not lower the score or establish safety."
-                        : screeningResult?.status === "source_not_imported"
-                          ? "OFAC snapshot is unavailable locally; sanctions coverage is incomplete."
-                          : screeningResult?.status === "network_not_covered"
-                            ? "This network is not covered by the current OFAC address mapping."
-                            : selectedTrackedAddress &&
-                                !hasAddressScreeningMapping(
-                                  selectedTrackedAddress.network,
-                                )
-                              ? "Exact-address screening is not mapped for this network; no screening result is included."
-                              : "OFAC check has not been run for this address; sanctions evidence is not included."}
-                  </span>
+              </div>
+              {!selectedTrackedAddress ? (
+                <div className="address-state">
+                  Save an address to view its analyst-entered risk evidence.
+                </div>
+              ) : riskSignalsLoading ? (
+                <div className="address-state" role="status">
+                  Loading evidence for{" "}
+                  {selectedTrackedAddress.label ||
+                    selectedTrackedAddress.address}
+                  …
+                </div>
+              ) : riskSignalsError ? (
+                <div className="address-state address-error" role="alert">
+                  <span>{riskSignalsError}</span>
                   <button
                     className="text-action"
-                    onClick={() => void screenSelectedAddress()}
-                    disabled={
-                      screeningLoading ||
-                      !selectedTrackedAddress ||
-                      !hasAddressScreeningMapping(
-                        selectedTrackedAddress.network,
-                      )
-                    }
+                    onClick={refreshWalletRiskSignals}
                   >
-                    {screeningLoading ? "Checking…" : "Run OFAC check"}
+                    Retry
                   </button>
                 </div>
-              </>
-            )}
-            <div className="risk-footnote">
-              <ShieldCheck size={14} />
-              <span>
-                {walletAssessment.disclaimer} Freshness and provider reliability
-                are shown as context, not scored.
-              </span>
-              <button
-                onClick={() =>
-                  setNotice(
-                    "Ни один сигнал не является юридическим заключением",
-                  )
-                }
-              >
-                How to read this score <ExternalLink size={12} />
-              </button>
-            </div>
-          </section>
-
-          <section
-            className="saved-addresses-panel"
-            aria-labelledby="saved-addresses-title"
-          >
-            <div className="activity-head">
-              <div>
-                <h2 id="saved-addresses-title">Saved addresses</h2>
-                <p>Addresses stored in the investigation API</p>
-              </div>
-              <button
-                className="text-action"
-                onClick={() => void retryAddressLoad()}
-                disabled={addressesLoading}
-              >
-                {addressesLoading ? "Loading…" : "Refresh list"}
-              </button>
-            </div>
-            {apiStatus === "offline" ? (
-              <div className="address-state address-error" role="alert">
+              ) : (
+                <>
+                  <div className="risk-content">
+                    <div
+                      className={`risk-score score-${walletAssessment.level}`}
+                    >
+                      <div
+                        className="score-ring"
+                        style={
+                          {
+                            "--score": `${walletAssessment.score}%`,
+                          } as CSSProperties
+                        }
+                      >
+                        <span>
+                          {walletAssessment.score}
+                          <small>/100</small>
+                        </span>
+                      </div>
+                      <b>{walletAssessment.level} review priority</b>
+                      <small>
+                        {selectedTrackedAddress.label ||
+                          selectedTrackedAddress.address}
+                      </small>
+                    </div>
+                    <div className="risk-signal-list">
+                      {walletAssessment.contributions.length === 0 ? (
+                        <div className="address-state">
+                          {activityStatus === "ready"
+                            ? "No matching observations or analyst evidence are recorded for this address."
+                            : "Saved transaction observations are not loaded, so behavior signals are unavailable."}
+                        </div>
+                      ) : (
+                        walletAssessment.contributions.map((item) => {
+                          const signal = item.signal;
+                          const sourceHref = safeExternalLink(
+                            signal.sourceReference,
+                          );
+                          return (
+                            <article className="risk-signal" key={signal.id}>
+                              <span
+                                className={`signal-mark severity-${signal.severity}`}
+                              >
+                                <Activity size={14} />
+                              </span>
+                              <span className="signal-copy">
+                                <b>{signal.title}</b>
+                                <small>{signal.detail}</small>
+                                <span className="signal-meta">
+                                  {signal.source} <i />{" "}
+                                  {signal.hops === 0
+                                    ? "Direct evidence"
+                                    : `${signal.hops} hop${signal.hops === 1 ? "" : "s"}`}{" "}
+                                  <i />{" "}
+                                  {new Date(
+                                    signal.observedAt,
+                                  ).toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                  })}
+                                  {signal.sourceReference && (
+                                    <>
+                                      <i />{" "}
+                                      {sourceHref ? (
+                                        <a
+                                          href={sourceHref}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          Source record
+                                        </a>
+                                      ) : (
+                                        <span>Source reference on file</span>
+                                      )}
+                                    </>
+                                  )}
+                                </span>
+                              </span>
+                              <span className="signal-contribution">
+                                <span
+                                  className={`severity-label severity-text-${signal.severity}`}
+                                >
+                                  {signal.severity}
+                                </span>
+                                <small>
+                                  +{item.contribution.toFixed(1)} pts
+                                </small>
+                                <small>
+                                  {item.baseWeight} ×{" "}
+                                  {item.distanceFactor.toFixed(2)} hop ×{" "}
+                                  {item.categoryFactor.toFixed(2)}{" "}
+                                  {signal.category}
+                                </small>
+                              </span>
+                            </article>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                  <div className="risk-evidence-note">
+                    <span>
+                      {screeningResult?.status === "exact_match"
+                        ? "Exact OFAC match included. Review the source entry."
+                        : screeningResult?.status === "no_exact_match"
+                          ? "OFAC snapshot checked: no exact match. This does not lower the score or establish safety."
+                          : screeningResult?.status === "source_not_imported"
+                            ? "OFAC snapshot is unavailable locally; sanctions coverage is incomplete."
+                            : screeningResult?.status === "network_not_covered"
+                              ? "This network is not covered by the current OFAC address mapping."
+                              : selectedTrackedAddress &&
+                                  !hasAddressScreeningMapping(
+                                    selectedTrackedAddress.network,
+                                  )
+                                ? "Exact-address screening is not mapped for this network; no screening result is included."
+                                : "OFAC check has not been run for this address; sanctions evidence is not included."}
+                    </span>
+                    <button
+                      className="text-action"
+                      onClick={() => void screenSelectedAddress()}
+                      disabled={
+                        screeningLoading ||
+                        !selectedTrackedAddress ||
+                        !hasAddressScreeningMapping(
+                          selectedTrackedAddress.network,
+                        )
+                      }
+                    >
+                      {screeningLoading ? "Checking…" : "Run OFAC check"}
+                    </button>
+                  </div>
+                </>
+              )}
+              <div className="risk-footnote">
+                <ShieldCheck size={14} />
                 <span>
-                  {addressesError ||
-                    "The API is unavailable. Check the service and retry."}
+                  {walletAssessment.disclaimer} Freshness and provider
+                  reliability are shown as context, not scored.
                 </span>
+                <button
+                  onClick={() =>
+                    setNotice(
+                      "Ни один сигнал не является юридическим заключением",
+                    )
+                  }
+                >
+                  How to read this score <ExternalLink size={12} />
+                </button>
+              </div>
+            </section>
+
+            <section
+              className="saved-addresses-panel"
+              aria-labelledby="saved-addresses-title"
+            >
+              <div className="activity-head">
+                <div>
+                  <h2 id="saved-addresses-title">Saved addresses</h2>
+                  <p>Addresses stored in the investigation API</p>
+                </div>
                 <button
                   className="text-action"
                   onClick={() => void retryAddressLoad()}
                   disabled={addressesLoading}
                 >
-                  Retry
+                  {addressesLoading ? "Loading…" : "Refresh list"}
                 </button>
               </div>
-            ) : addressesLoading ? (
-              <p className="address-state" role="status">
-                Loading saved addresses…
-              </p>
-            ) : addressesError ? (
-              <div className="address-state address-error" role="alert">
-                <span>{addressesError}</span>
-                <button
-                  className="text-action"
-                  onClick={() => void retryAddressLoad()}
-                >
-                  Retry
-                </button>
-              </div>
-            ) : trackedAddresses.length === 0 ? (
-              <p className="address-state">
-                No addresses saved yet. Track a wallet to add it here.
-              </p>
-            ) : (
-              <div className="address-management">
-                <label
-                  className="address-picker-label"
-                  htmlFor="tracked-address-picker"
-                >
-                  Select an address
-                </label>
-                <select
-                  id="tracked-address-picker"
-                  value={selectedAddressId}
-                  onChange={(event) => {
-                    setSelectedAddressId(event.target.value);
-                    setHistoryRecords(null);
-                    setHistoryError("");
-                    setScreeningResult(null);
-                    setScreeningError("");
-                  }}
-                >
-                  {trackedAddresses.map((address) => (
-                    <option key={address.id} value={address.id}>
-                      {address.label ? `${address.label} · ` : ""}
-                      {address.address} (
-                      {getNetworkName(address.network, networkCatalog.networks)}
-                      )
-                    </option>
-                  ))}
-                </select>
-                <div className="address-management-actions">
+              {apiStatus === "offline" ? (
+                <div className="address-state address-error" role="alert">
+                  <span>
+                    {addressesError ||
+                      "The API is unavailable. Check the service and retry."}
+                  </span>
                   <button
-                    className="button button-secondary"
-                    onClick={() => void viewSavedHistory()}
-                    disabled={!selectedTrackedAddress || historyLoading}
+                    className="text-action"
+                    onClick={() => void retryAddressLoad()}
+                    disabled={addressesLoading}
                   >
-                    {historyLoading ? "Loading history…" : "View saved history"}
-                  </button>
-                  <button
-                    className="button button-primary"
-                    onClick={() => void syncSavedAddress()}
-                    disabled={
-                      !selectedTrackedAddress ||
-                      isSyncing ||
-                      getNetworkSyncAvailability(
-                        selectedTrackedAddress.network,
-                        networkCatalog,
-                      ) === false
-                    }
-                  >
-                    {isSyncing ? "Syncing…" : "Sync wallet history"}
+                    Retry
                   </button>
                 </div>
-                <p className="address-note">
-                  {selectedTrackedAddress?.network === "bitcoin"
-                    ? "Saved history is loaded on demand. Sync requests Bitcoin data from the configured Esplora provider."
-                    : selectedTrackedAddress &&
+              ) : addressesLoading ? (
+                <p className="address-state" role="status">
+                  Loading saved addresses…
+                </p>
+              ) : addressesError ? (
+                <div className="address-state address-error" role="alert">
+                  <span>{addressesError}</span>
+                  <button
+                    className="text-action"
+                    onClick={() => void retryAddressLoad()}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : activeInvestigationAddresses.length === 0 ? (
+                <p className="address-state">
+                  No addresses saved yet. Track a wallet to add it here.
+                </p>
+              ) : (
+                <div className="address-management">
+                  <label
+                    className="address-picker-label"
+                    htmlFor="tracked-address-picker"
+                  >
+                    Select an address
+                  </label>
+                  <select
+                    id="tracked-address-picker"
+                    value={selectedAddressId}
+                    onChange={(event) => {
+                      setSelectedAddressId(event.target.value);
+                      setHistoryRecords(null);
+                      setHistoryError("");
+                      setScreeningResult(null);
+                      setScreeningError("");
+                    }}
+                  >
+                    {activeInvestigationAddresses.map((address) => (
+                      <option key={address.id} value={address.id}>
+                        {address.label ? `${address.label} · ` : ""}
+                        {address.address} (
+                        {getNetworkName(
+                          address.network,
+                          networkCatalog.networks,
+                        )}
+                        )
+                      </option>
+                    ))}
+                  </select>
+                  <div className="address-management-actions">
+                    <button
+                      className="button button-secondary"
+                      onClick={() => void viewSavedHistory()}
+                      disabled={!selectedTrackedAddress || historyLoading}
+                    >
+                      {historyLoading
+                        ? "Loading history…"
+                        : "View saved history"}
+                    </button>
+                    <button
+                      className="button button-primary"
+                      onClick={() => void syncSavedAddress()}
+                      disabled={
+                        !selectedTrackedAddress ||
+                        isSyncing ||
                         getNetworkSyncAvailability(
                           selectedTrackedAddress.network,
                           networkCatalog,
                         ) === false
-                      ? "History sync is not configured for this network. Existing saved observations remain available."
-                      : `Saved history is loaded on demand from the configured provider. Network: ${selectedTrackedAddress ? getNetworkName(selectedTrackedAddress.network, networkCatalog.networks) : "—"}.`}
-                </p>
-                {historyError && (
-                  <div className="address-state address-error" role="alert">
-                    <span>{historyError}</span>
-                    <button
-                      className="text-action"
-                      onClick={() => void syncSavedAddress()}
+                      }
                     >
-                      Retry
+                      {isSyncing ? "Syncing…" : "Sync wallet history"}
                     </button>
+                  </div>
+                  <p className="address-note">
+                    {selectedTrackedAddress?.network === "bitcoin"
+                      ? "Saved history is loaded on demand. Sync requests Bitcoin data from the configured Esplora provider."
+                      : selectedTrackedAddress &&
+                          getNetworkSyncAvailability(
+                            selectedTrackedAddress.network,
+                            networkCatalog,
+                          ) === false
+                        ? "History sync is not configured for this network. Existing saved observations remain available."
+                        : `Saved history is loaded on demand from the configured provider. Network: ${selectedTrackedAddress ? getNetworkName(selectedTrackedAddress.network, networkCatalog.networks) : "—"}.`}
+                  </p>
+                  {historyError && (
+                    <div className="address-state address-error" role="alert">
+                      <span>{historyError}</span>
+                      <button
+                        className="text-action"
+                        onClick={() => void syncSavedAddress()}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="screening-action">
+                <div>
+                  <strong>OFAC SDN address check</strong>
+                  <p>
+                    Exact checks use the local list snapshot and currently map
+                    Bitcoin and Ethereum addresses. Indirect exposure is not
+                    checked.
+                  </p>
+                </div>
+                <button
+                  className="button button-secondary"
+                  onClick={() => void screenSelectedAddress()}
+                  disabled={
+                    !selectedTrackedAddress ||
+                    screeningLoading ||
+                    !hasAddressScreeningMapping(selectedTrackedAddress.network)
+                  }
+                >
+                  {screeningLoading ? "Checking address…" : "Check address"}
+                </button>
+              </div>
+              {screeningError && (
+                <div className="address-state address-error" role="alert">
+                  <span>{screeningError}</span>
+                  <button
+                    className="text-action"
+                    onClick={() => void screenSelectedAddress()}
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+              {screeningResult && (
+                <div
+                  className={`screening-result status-${screeningResult.status}`}
+                  role="status"
+                >
+                  <div className="screening-result-heading">
+                    <strong>
+                      {screeningResult.status === "exact_match" &&
+                        "Exact match found"}
+                      {screeningResult.status === "no_exact_match" &&
+                        "No exact match in this snapshot"}
+                      {screeningResult.status === "source_not_imported" &&
+                        "OFAC snapshot is not imported"}
+                      {screeningResult.status === "network_not_covered" &&
+                        "Network is not covered"}
+                    </strong>
+                    {screeningResult.source && (
+                      <small>
+                        {screeningResult.source.source_name} · published{" "}
+                        {screeningResult.source.published_at} · imported{" "}
+                        {new Date(
+                          screeningResult.source.imported_at,
+                        ).toLocaleString()}
+                      </small>
+                    )}
+                  </div>
+                  {screeningResult.matches.map((match) => (
+                    <div
+                      className="screening-match"
+                      key={`${match.entity_uid}:${match.currency_code}:${match.address}`}
+                    >
+                      <strong>{match.entity_name}</strong>
+                      <span>
+                        {match.currency_code} · ID {match.entity_uid}
+                      </span>
+                      {match.programs.length > 0 && (
+                        <small>{match.programs.join(", ")}</small>
+                      )}
+                    </div>
+                  ))}
+                  <p>{screeningResult.explanation}</p>
+                </div>
+              )}
+            </section>
+
+            <section className="activity-panel">
+              <div className="activity-head">
+                <div>
+                  <h2>Recent transactions</h2>
+                  <p>Saved observations across tracked addresses</p>
+                </div>
+                <button
+                  className="text-action"
+                  onClick={() =>
+                    setActivityRefreshKey((revision) => revision + 1)
+                  }
+                  disabled={
+                    activityStatus === "loading" || apiStatus !== "online"
+                  }
+                >
+                  Reload saved history
+                </button>
+              </div>
+              {activeInvestigationAddresses.some(
+                ({ network }) => network === "solana",
+              ) && (
+                <p className="network-catalog-state" role="note">
+                  Solana history is partial: finalized SOL transfers and parsed
+                  SPL transfers from transactions that reference this wallet.
+                  Incoming SPL activity can be missed when the wallet appears
+                  only as token-balance owner metadata. Token-account discovery,
+                  unsupported programs, and public RPC retention also leave
+                  gaps.
+                </p>
+              )}
+              {activeInvestigationAddresses.some(
+                ({ network }) => network === "tron",
+              ) && (
+                <p className="network-catalog-state" role="note">
+                  TRON history covers confirmed native TRX transfers and indexed
+                  TRC-20 Transfer events. Other contract calls, internal TRX
+                  movements, TRC-10, TRC-721, and events omitted or delayed by
+                  TronGrid are not included.
+                </p>
+              )}
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Transaction</th>
+                      <th>Flow</th>
+                      <th>Amount</th>
+                      <th>Network</th>
+                      <th>Time</th>
+                      <th>Status</th>
+                      <th>Tracked wallet · source</th>
+                      <th title="Review priority only. Evidence does not establish wrongdoing or legal status.">
+                        Risk score
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activityStatus === "loading" && (
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="activity-message"
+                          role="status"
+                        >
+                          Loading saved transaction observations…
+                        </td>
+                      </tr>
+                    )}
+                    {activityStatus === "error" && (
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="activity-message activity-error"
+                        >
+                          {activityError}
+                          <button
+                            className="text-action"
+                            onClick={() =>
+                              setActivityRefreshKey((revision) => revision + 1)
+                            }
+                            disabled={apiStatus !== "online"}
+                          >
+                            Retry
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                    {activityStatus === "ready" &&
+                      pagedTransfers.map((transfer) => {
+                        const riskPlaceholder = getTransferRiskPlaceholder(
+                          transfer.trackedAddressId,
+                          selectedTrackedAddress?.id ?? null,
+                          riskSignalsLoading,
+                          riskSignalsError,
+                        );
+                        return (
+                          <tr key={transfer.id}>
+                            <td>
+                              <span className="tx-id">
+                                {transfer.hash.length > 24
+                                  ? `${transfer.hash.slice(0, 12)}…${transfer.hash.slice(-8)}`
+                                  : transfer.hash}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="flow-direction">
+                                {transfer.direction === "outbound" ? (
+                                  <ArrowUpRight size={14} />
+                                ) : transfer.direction === "both" ? (
+                                  <GitBranch size={14} />
+                                ) : (
+                                  <ArrowDownLeft size={14} />
+                                )}
+                                <span>
+                                  {transfer.from}
+                                  <small>to {transfer.to}</small>
+                                </span>
+                              </span>
+                            </td>
+                            <td>
+                              <b className="amount">
+                                {transfer.amount}{" "}
+                                <small>{transfer.asset}</small>
+                              </b>
+                            </td>
+                            <td>
+                              <span className="table-network">
+                                <NetworkMark network={transfer.network} />
+                                {transfer.network}
+                              </span>
+                            </td>
+                            <td className="time-cell">
+                              {formatFeedTime(transfer.occurredAt)}
+                            </td>
+                            <td>
+                              <span
+                                className={`status ${transfer.confirmed ? "confirmed" : "pending"}`}
+                              >
+                                <i />
+                                {transfer.confirmed
+                                  ? "Confirmed"
+                                  : "Unconfirmed"}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="activity-source">
+                                <strong>{transfer.trackedWallet}</strong>
+                                <small>{transfer.provider}</small>
+                              </span>
+                            </td>
+                            <td>
+                              {transfer.riskAssessment ? (
+                                <span
+                                  className={`transfer-risk ${transfer.riskAssessment.level}`}
+                                  title={[
+                                    transfer.riskAssessment.disclaimer,
+                                    ...transfer.riskAssessment.contributions.map(
+                                      ({
+                                        evidence,
+                                        basePoints,
+                                        factor,
+                                        points,
+                                      }) =>
+                                        `${evidence.title}: ${basePoints} × ${factor} = ${points} points · ${evidence.source}${evidence.reference ? ` · ${evidence.reference}` : ""}`,
+                                    ),
+                                  ].join("\n")}
+                                  aria-label={`Review priority ${transfer.riskAssessment.score}, ${transfer.riskAssessment.level}`}
+                                >
+                                  {transfer.riskAssessment.score} ·{" "}
+                                  {transfer.riskAssessment.level}
+                                </span>
+                              ) : (
+                                <span
+                                  className="transfer-risk-none"
+                                  title={riskPlaceholder.error ?? undefined}
+                                >
+                                  {riskPlaceholder.label}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+                {activityStatus === "ready" &&
+                  visibleTransfers.length === 0 && (
+                    <div className="empty-state">
+                      {activeInvestigationAddresses.length === 0
+                        ? "No tracked wallets yet. Add an address to begin."
+                        : transactionFeed.length === 0
+                          ? "No saved observations yet. Sync a tracked wallet to load its history."
+                          : "No saved observations for this network."}
+                    </div>
+                  )}
+                {activityStatus === "ready" && activityPageCount > 1 && (
+                  <div className="feed-pagination">
+                    <span>
+                      Showing {currentActivityPage * TRANSACTIONS_PER_PAGE + 1}–
+                      {Math.min(
+                        (currentActivityPage + 1) * TRANSACTIONS_PER_PAGE,
+                        visibleTransfers.length,
+                      )}{" "}
+                      of {visibleTransfers.length} observations
+                    </span>
+                    <div>
+                      <button
+                        className="text-action"
+                        onClick={() => setActivityPage(currentActivityPage - 1)}
+                        disabled={currentActivityPage === 0}
+                      >
+                        Previous
+                      </button>
+                      <span>
+                        {currentActivityPage + 1} / {activityPageCount}
+                      </span>
+                      <button
+                        className="text-action"
+                        onClick={() => setActivityPage(currentActivityPage + 1)}
+                        disabled={currentActivityPage >= activityPageCount - 1}
+                      >
+                        Next
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
-            )}
-            <div className="screening-action">
-              <div>
-                <strong>OFAC SDN address check</strong>
-                <p>
-                  Exact checks use the local list snapshot and currently map
-                  Bitcoin and Ethereum addresses. Indirect exposure is not
-                  checked.
-                </p>
-              </div>
-              <button
-                className="button button-secondary"
-                onClick={() => void screenSelectedAddress()}
-                disabled={
-                  !selectedTrackedAddress ||
-                  screeningLoading ||
-                  !hasAddressScreeningMapping(selectedTrackedAddress.network)
-                }
-              >
-                {screeningLoading ? "Checking address…" : "Check address"}
-              </button>
-            </div>
-            {screeningError && (
-              <div className="address-state address-error" role="alert">
-                <span>{screeningError}</span>
-                <button
-                  className="text-action"
-                  onClick={() => void screenSelectedAddress()}
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-            {screeningResult && (
-              <div
-                className={`screening-result status-${screeningResult.status}`}
-                role="status"
-              >
-                <div className="screening-result-heading">
-                  <strong>
-                    {screeningResult.status === "exact_match" &&
-                      "Exact match found"}
-                    {screeningResult.status === "no_exact_match" &&
-                      "No exact match in this snapshot"}
-                    {screeningResult.status === "source_not_imported" &&
-                      "OFAC snapshot is not imported"}
-                    {screeningResult.status === "network_not_covered" &&
-                      "Network is not covered"}
-                  </strong>
-                  {screeningResult.source && (
-                    <small>
-                      {screeningResult.source.source_name} · published{" "}
-                      {screeningResult.source.published_at} · imported{" "}
-                      {new Date(
-                        screeningResult.source.imported_at,
-                      ).toLocaleString()}
-                    </small>
-                  )}
-                </div>
-                {screeningResult.matches.map((match) => (
-                  <div
-                    className="screening-match"
-                    key={`${match.entity_uid}:${match.currency_code}:${match.address}`}
-                  >
-                    <strong>{match.entity_name}</strong>
-                    <span>
-                      {match.currency_code} · ID {match.entity_uid}
-                    </span>
-                    {match.programs.length > 0 && (
-                      <small>{match.programs.join(", ")}</small>
-                    )}
-                  </div>
-                ))}
-                <p>{screeningResult.explanation}</p>
-              </div>
-            )}
-          </section>
-
-          <section className="activity-panel">
-            <div className="activity-head">
-              <div>
-                <h2>Recent transactions</h2>
-                <p>Saved observations across tracked addresses</p>
-              </div>
-              <button
-                className="text-action"
-                onClick={() =>
-                  setActivityRefreshKey((revision) => revision + 1)
-                }
-                disabled={
-                  activityStatus === "loading" || apiStatus !== "online"
-                }
-              >
-                Reload saved history
-              </button>
-            </div>
-            {trackedAddresses.some(({ network }) => network === "solana") && (
-              <p className="network-catalog-state" role="note">
-                Solana history is partial: finalized SOL transfers and parsed
-                SPL transfers from transactions that reference this wallet.
-                Incoming SPL activity can be missed when the wallet appears only
-                as token-balance owner metadata. Token-account discovery,
-                unsupported programs, and public RPC retention also leave gaps.
-              </p>
-            )}
-            {trackedAddresses.some(({ network }) => network === "tron") && (
-              <p className="network-catalog-state" role="note">
-                TRON history covers confirmed native TRX transfers and indexed
-                TRC-20 Transfer events. Other contract calls, internal TRX
-                movements, TRC-10, TRC-721, and events omitted or delayed by
-                TronGrid are not included.
-              </p>
-            )}
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Transaction</th>
-                    <th>Flow</th>
-                    <th>Amount</th>
-                    <th>Network</th>
-                    <th>Time</th>
-                    <th>Status</th>
-                    <th>Tracked wallet · source</th>
-                    <th title="Review priority only. Evidence does not establish wrongdoing or legal status.">
-                      Risk score
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activityStatus === "loading" && (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="activity-message"
-                        role="status"
-                      >
-                        Loading saved transaction observations…
-                      </td>
-                    </tr>
-                  )}
-                  {activityStatus === "error" && (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="activity-message activity-error"
-                      >
-                        {activityError}
-                        <button
-                          className="text-action"
-                          onClick={() =>
-                            setActivityRefreshKey((revision) => revision + 1)
-                          }
-                          disabled={apiStatus !== "online"}
-                        >
-                          Retry
-                        </button>
-                      </td>
-                    </tr>
-                  )}
-                  {activityStatus === "ready" &&
-                    pagedTransfers.map((transfer) => {
-                      const riskPlaceholder = getTransferRiskPlaceholder(
-                        transfer.trackedAddressId,
-                        selectedTrackedAddress?.id ?? null,
-                        riskSignalsLoading,
-                        riskSignalsError,
-                      );
-                      return (
-                        <tr key={transfer.id}>
-                          <td>
-                            <span className="tx-id">
-                              {transfer.hash.length > 24
-                                ? `${transfer.hash.slice(0, 12)}…${transfer.hash.slice(-8)}`
-                                : transfer.hash}
-                            </span>
-                          </td>
-                          <td>
-                            <span className="flow-direction">
-                              {transfer.direction === "outbound" ? (
-                                <ArrowUpRight size={14} />
-                              ) : transfer.direction === "both" ? (
-                                <GitBranch size={14} />
-                              ) : (
-                                <ArrowDownLeft size={14} />
-                              )}
-                              <span>
-                                {transfer.from}
-                                <small>to {transfer.to}</small>
-                              </span>
-                            </span>
-                          </td>
-                          <td>
-                            <b className="amount">
-                              {transfer.amount} <small>{transfer.asset}</small>
-                            </b>
-                          </td>
-                          <td>
-                            <span className="table-network">
-                              <NetworkMark network={transfer.network} />
-                              {transfer.network}
-                            </span>
-                          </td>
-                          <td className="time-cell">
-                            {formatFeedTime(transfer.occurredAt)}
-                          </td>
-                          <td>
-                            <span
-                              className={`status ${transfer.confirmed ? "confirmed" : "pending"}`}
-                            >
-                              <i />
-                              {transfer.confirmed ? "Confirmed" : "Unconfirmed"}
-                            </span>
-                          </td>
-                          <td>
-                            <span className="activity-source">
-                              <strong>{transfer.trackedWallet}</strong>
-                              <small>{transfer.provider}</small>
-                            </span>
-                          </td>
-                          <td>
-                            {transfer.riskAssessment ? (
-                              <span
-                                className={`transfer-risk ${transfer.riskAssessment.level}`}
-                                title={[
-                                  transfer.riskAssessment.disclaimer,
-                                  ...transfer.riskAssessment.contributions.map(
-                                    ({
-                                      evidence,
-                                      basePoints,
-                                      factor,
-                                      points,
-                                    }) =>
-                                      `${evidence.title}: ${basePoints} × ${factor} = ${points} points · ${evidence.source}${evidence.reference ? ` · ${evidence.reference}` : ""}`,
-                                  ),
-                                ].join("\n")}
-                                aria-label={`Review priority ${transfer.riskAssessment.score}, ${transfer.riskAssessment.level}`}
-                              >
-                                {transfer.riskAssessment.score} ·{" "}
-                                {transfer.riskAssessment.level}
-                              </span>
-                            ) : (
-                              <span
-                                className="transfer-risk-none"
-                                title={riskPlaceholder.error ?? undefined}
-                              >
-                                {riskPlaceholder.label}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-              {activityStatus === "ready" && visibleTransfers.length === 0 && (
-                <div className="empty-state">
-                  {trackedAddresses.length === 0
-                    ? "No tracked wallets yet. Add an address to begin."
-                    : transactionFeed.length === 0
-                      ? "No saved observations yet. Sync a tracked wallet to load its history."
-                      : "No saved observations for this network."}
-                </div>
-              )}
-              {activityStatus === "ready" && activityPageCount > 1 && (
-                <div className="feed-pagination">
-                  <span>
-                    Showing {currentActivityPage * TRANSACTIONS_PER_PAGE + 1}–
-                    {Math.min(
-                      (currentActivityPage + 1) * TRANSACTIONS_PER_PAGE,
-                      visibleTransfers.length,
-                    )}{" "}
-                    of {visibleTransfers.length} observations
-                  </span>
-                  <div>
-                    <button
-                      className="text-action"
-                      onClick={() => setActivityPage(currentActivityPage - 1)}
-                      disabled={currentActivityPage === 0}
-                    >
-                      Previous
-                    </button>
-                    <span>
-                      {currentActivityPage + 1} / {activityPageCount}
-                    </span>
-                    <button
-                      className="text-action"
-                      onClick={() => setActivityPage(currentActivityPage + 1)}
-                      disabled={currentActivityPage >= activityPageCount - 1}
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-          <footer className="page-footer">
-            <span>
-              <span className="footer-brand-mark">T</span> Tracefold{" "}
-              <span>Open-source investigation workspace</span>
-            </span>
-            <span>
-              Overview graph uses sample data <span>·</span>{" "}
-              <button
-                onClick={() =>
-                  setNotice("Источники данных подключаются в настройках")
-                }
-              >
-                Manage data sources
-              </button>
-            </span>
-          </footer>
-        </div>
+            </section>
+            <footer className="page-footer">
+              <span>
+                <span className="footer-brand-mark">T</span> Tracefold{" "}
+                <span>Open-source investigation workspace</span>
+              </span>
+              <span>Provider history can be incomplete or delayed.</span>
+            </footer>
+          </div>
+        )}
       </main>
 
       {historyRecords && (
