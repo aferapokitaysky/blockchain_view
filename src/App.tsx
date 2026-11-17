@@ -2395,6 +2395,11 @@ function App() {
                       <option key={network.id} value={network.id}>
                         {network.name} · {network.native_asset}
                         {network.chain_id ? ` · chain ${network.chain_id}` : ""}
+                        {network.requires_api_key &&
+                          !network.history_sync_available &&
+                          (network.requires_paid_tier
+                            ? " · paid Etherscan plan required"
+                            : " · Etherscan API key required")}
                       </option>
                     ))}
                   </select>
