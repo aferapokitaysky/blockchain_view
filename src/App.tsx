@@ -29,11 +29,11 @@ import {
   detectAddressNetwork,
   type AddressDetection,
 } from "./features/networks/detectAddressNetwork";
+import { NetworkMark } from "./features/networks/NetworkMark";
 import {
   getNetworkName,
   getNetworkSyncAvailability,
   hasAddressScreeningMapping,
-  isEvmNetworkId,
   LEGACY_NETWORKS,
   type NetworkCatalog,
 } from "./features/networks/networkCatalog";
@@ -100,139 +100,6 @@ function safeExternalLink(reference: string | null): string | null {
     return null;
   }
 }
-const networkMeta: Record<string, { color: string }> = {
-  Ethereum: { color: "#a98cff" },
-  ethereum: { color: "#a98cff" },
-  Bitcoin: { color: "#f2a84a" },
-  bitcoin: { color: "#f2a84a" },
-  Base: { color: "#5595ff" },
-  base: { color: "#5595ff" },
-  Arbitrum: { color: "#64c8fa" },
-  "Arbitrum One": { color: "#64c8fa" },
-  arbitrum: { color: "#64c8fa" },
-  Solana: { color: "#a98cff" },
-  solana: { color: "#a98cff" },
-  sui: { color: "#68d5c2" },
-  Sui: { color: "#68d5c2" },
-  TRON: { color: "#ff5964" },
-  tron: { color: "#ff5964" },
-  "XRP Ledger": { color: "#20a8d8" },
-  "xrp ledger": { color: "#20a8d8" },
-  xrpl: { color: "#20a8d8" },
-};
-
-function networkColor(network: string): string {
-  return (
-    networkMeta[network]?.color ??
-    (isEvmNetworkId(network) ? "#7aabff" : "#a3b0a7")
-  );
-}
-
-function NetworkShape({ network }: { network: Network }) {
-  const normalizedNetwork = network.toLowerCase();
-  return (
-    <g
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {normalizedNetwork === "bitcoin" && (
-        <>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M10 6.5v11m4-11v11M8.8 9h5a2 2 0 0 1 0 4h-5m0 0h5.7a2 2 0 0 1 0 4H8.8" />
-        </>
-      )}
-      {normalizedNetwork === "ethereum" && (
-        <>
-          <path d="m12 2.5 6.2 9.3L12 15l-6.2-3.2L12 2.5Z" />
-          <path d="m5.8 13.1 6.2 3.2 6.2-3.2L12 21.5l-6.2-8.4Z" />
-        </>
-      )}
-      {normalizedNetwork === "sui" && (
-        <>
-          <path d="m12 2.5 7 4v8l-7 4-7-4v-8l7-4Z" />
-          <path d="m8 9 4 2.3L16 9m-8 4 4 2.3 4-2.3" />
-          <path d="M12 11.3v4" />
-        </>
-      )}
-      {normalizedNetwork === "base" && (
-        <>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M20.5 9.5H12a2.5 2.5 0 1 0 0 5h8.5" />
-        </>
-      )}
-      {(normalizedNetwork === "arbitrum" ||
-        normalizedNetwork === "arbitrum one") && (
-        <>
-          <path d="m12 2.5 8 4.6v9.8l-8 4.6-8-4.6V7.1l8-4.6Z" />
-          <path d="m8 8 4 8m4-8-4 8m-1.8-2.4h3.6" />
-        </>
-      )}
-      {normalizedNetwork === "solana" && (
-        <>
-          <path
-            d="M6 5.5h12.5l-2.5 2.4H3.5L6 5.5Z"
-            fill="currentColor"
-            stroke="none"
-          />
-          <path
-            d="M6 10.8h14.5L18 13.2H3.5l2.5-2.4Z"
-            fill="currentColor"
-            stroke="none"
-          />
-          <path
-            d="M6 16.1h12.5L16 18.5H3.5l2.5-2.4Z"
-            fill="currentColor"
-            stroke="none"
-          />
-        </>
-      )}
-      {normalizedNetwork === "tron" && (
-        <>
-          <path d="M4 4.5 20 8 12 20 4 4.5Z" />
-          <path d="m7.1 10.3 9.8 0M9.4 13.1l5.2 0" />
-          <circle cx="4" cy="4.5" r="1.1" fill="currentColor" stroke="none" />
-          <circle cx="20" cy="8" r="1.1" fill="currentColor" stroke="none" />
-          <circle cx="12" cy="20" r="1.1" fill="currentColor" stroke="none" />
-        </>
-      )}
-      {(normalizedNetwork === "xrpl" || normalizedNetwork === "xrp ledger") && (
-        <>
-          <path d="M4 6h4.2c2.2 0 3.2 1.1 3.8 2.1l.1.2c.6 1 1.3 1.7 2.7 1.7h5.2" />
-          <path d="M4 18h4.2c2.2 0 3.2-1.1 3.8-2.1l.1-.2c.6-1 1.3-1.7 2.7-1.7h5.2" />
-          <circle cx="4" cy="6" r="1.2" fill="currentColor" />
-          <circle cx="20" cy="10" r="1.2" fill="currentColor" />
-          <circle cx="4" cy="18" r="1.2" fill="currentColor" />
-          <circle cx="20" cy="14" r="1.2" fill="currentColor" />
-        </>
-      )}
-      {!networkMeta[normalizedNetwork] && (
-        <>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M7 12h10M12 7v10" />
-        </>
-      )}
-    </g>
-  );
-}
-
-function NetworkMark({ network }: { network: Network }) {
-  return (
-    <span
-      className="network-mark"
-      data-network={network.toLowerCase()}
-      style={{ "--network": networkColor(network) } as CSSProperties}
-      aria-label={network}
-    >
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <NetworkShape network={network} />
-      </svg>
-    </span>
-  );
-}
-
 function App() {
   const [activeNetwork, setActiveNetwork] = useState<"All networks" | Network>(
     "All networks",
@@ -1170,7 +1037,15 @@ function App() {
                 setActiveNetwork(activeNetwork === id ? "All networks" : id);
               }}
             >
-              <NetworkMark network={name} />
+              <NetworkMark
+                networkId={id}
+                label={name}
+                chainId={
+                  networkCatalog.networks.find(
+                    ({ id: catalogId }) => catalogId === id,
+                  )?.chain_id
+                }
+              />
               <span>{name}</span>
               <i />
             </button>
@@ -2009,7 +1884,15 @@ function App() {
                             </td>
                             <td>
                               <span className="table-network">
-                                <NetworkMark network={transfer.network} />
+                                <NetworkMark
+                                  networkId={transfer.networkId}
+                                  label={transfer.network}
+                                  chainId={
+                                    networkCatalog.networks.find(
+                                      ({ id }) => id === transfer.networkId,
+                                    )?.chain_id
+                                  }
+                                />
                                 {transfer.network}
                               </span>
                             </td>
@@ -2276,7 +2159,18 @@ function App() {
                 </span>
                 {addressDetection.status === "detected" && (
                   <span className="network-detected">
-                    <NetworkMark network={addressDetection.network} />
+                    <NetworkMark
+                      networkId={addressDetection.network}
+                      label={getNetworkName(
+                        addressDetection.network,
+                        networkCatalog.networks,
+                      )}
+                      chainId={
+                        networkCatalog.networks.find(
+                          ({ id }) => id === addressDetection.network,
+                        )?.chain_id
+                      }
+                    />
                     {addressDetection.network === "bitcoin"
                       ? "Bitcoin mainnet"
                       : (networkCatalog.networks.find(
