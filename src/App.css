@@ -225,33 +225,6 @@
   border-color: #60d5ad;
   box-shadow: 0 0 8px #60d5ad88;
 }
-.network-mark {
-  display: inline-grid;
-  place-items: center;
-  width: 19px;
-  height: 19px;
-  flex: none;
-  border: 1px solid color-mix(in srgb, var(--network) 28%, transparent);
-  border-radius: 50%;
-  color: var(--network);
-  background: color-mix(in srgb, var(--network) 9%, transparent);
-}
-.network-mark svg {
-  width: 13px;
-  height: 13px;
-  overflow: visible;
-  animation: network-mark-drift 5s ease-in-out infinite;
-}
-.network-mark[data-network="tron"]:hover svg,
-.network-mark[data-network="tron"]:focus-within svg {
-  animation: tron-mark-emphasis 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-@keyframes tron-mark-emphasis {
-  45% {
-    transform: scale(1.2) rotate(-8deg);
-    filter: drop-shadow(0 0 3px #ff596488);
-  }
-}
 .sidebar-spacer {
   flex: 1;
 }
